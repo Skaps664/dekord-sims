@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useState } from "react"
 
 const CORRECT_USERNAME = "skaps"
 const CORRECT_PASSWORD = "YOutuber123!@#"
@@ -11,52 +11,104 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    try {
-      const s = sessionStorage.getItem("dekord_auth")
-      if (s === "true") setAuthenticated(true)
-    } catch (e) {
-      // ignore sessionStorage errors
-    }
-  }, [])
-
-  function handleSubmit(e?: React.FormEvent) {
-    if (e) e.preventDefault()
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
     setError(null)
+    
     if (username === CORRECT_USERNAME && password === CORRECT_PASSWORD) {
-      try {
-        sessionStorage.setItem("dekord_auth", "true")
-      } catch (e) {
-        // ignore
-      }
       setAuthenticated(true)
     } else {
       setError("Invalid username or password")
+      setPassword("") // Clear password on error
     }
   }
 
   if (authenticated) return <>{children}</>
 
   return (
-    <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)", zIndex: 9999 }}>
-      <div style={{ width: 360, background: "#fff", borderRadius: 8, padding: 24, boxShadow: "0 6px 24px rgba(0,0,0,0.2)" }}>
-        <h2 style={{ margin: 0, marginBottom: 8 }}>Welcome</h2>
-        <p style={{ marginTop: 0, marginBottom: 16, color: "#444" }}>Please sign in to continue</p>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 12, color: "#333", marginBottom: 6 }}>Username</label>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #ddd" }} />
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 z-[9999]">
+      <div className="w-full max-w-md mx-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
+              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Welcome Back</h2>
+            <p className="text-slate-600">Sign in to access dekord-sims</p>
           </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, color: "#333", marginBottom: 6 }}>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #ddd" }} />
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} autoComplete="off">
+            <div className="space-y-4">
+              {/* Username */}
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                  required
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  placeholder="Enter your username"
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="off"
+                  required
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  placeholder="Enter your password"
+                />
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                  <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm text-red-800">{error}</span>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Sign In
+              </button>
+            </div>
+          </form>
+
+          {/* Footer */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-slate-500">
+              Protected by dekord authentication
+            </p>
           </div>
-          {error ? <div style={{ color: "#c0392b", marginBottom: 12 }}>{error}</div> : null}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" style={{ flex: 1, padding: "8px 12px", background: "#0b74ff", color: "#fff", border: "none", borderRadius: 6 }}>Sign in</button>
-            <button type="button" onClick={() => { setUsername(CORRECT_USERNAME); setPassword(CORRECT_PASSWORD); handleSubmit() }} style={{ padding: "8px 12px", border: "1px solid #ddd", background: "#fff", borderRadius: 6 }}>Auto-fill</button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   )
