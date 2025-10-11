@@ -23,7 +23,7 @@ interface AddItemDialogProps {
 }
 
 export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogProps) {
-  const [itemType, setItemType] = useState<"product" | "raw_material">("product")
+  const [itemType, setItemType] = useState<"raw_material">("raw_material")
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
@@ -35,6 +35,8 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
     // Raw material specific
     unit: "",
     supplier: "",
+    location: "",
+    notes: "",
     stock_quantity: "",
     minimum_stock: "",
   })
@@ -71,39 +73,23 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
     setLoading(true)
 
     try {
-      let response
-
-      if (itemType === "product") {
-        response = await fetch("/api/products", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: formData.name,
-            description: formData.description,
-            category: formData.category,
-            unit_price: Number.parseFloat(formData.unit_price),
-            cost_price: Number.parseFloat(formData.cost_price),
-            barcode: formData.barcode || null,
-          }),
-        })
-      } else {
-        response = await fetch("/api/raw-materials", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: formData.name,
-            unit: formData.unit,
-            cost_per_unit: Number.parseFloat(formData.cost_price),
-            supplier: formData.supplier,
-            stock_quantity: Number.parseFloat(formData.stock_quantity || "0"),
-            minimum_stock: Number.parseFloat(formData.minimum_stock || "0"),
-          }),
-        })
-      }
+      const response = await fetch("/api/raw-materials", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          unit: formData.unit,
+          quantity: Number.parseFloat(formData.stock_quantity || "0"),
+          unit_cost: Number.parseFloat(formData.cost_price),
+          supplier: formData.supplier,
+          location: formData.location || 'Raw Materials Storage',
+          notes: formData.notes || '',
+          barcode: formData.barcode || '',
+          minimum_stock: formData.minimum_stock ? Number.parseInt(formData.minimum_stock) : 0,
+        }),
+      })
 
       const result = await response.json()
 
@@ -118,6 +104,8 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
           barcode: "",
           unit: "",
           supplier: "",
+          location: "",
+          notes: "",
           stock_quantity: "",
           minimum_stock: "",
         })
@@ -139,46 +127,13 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Item</DialogTitle>
+          <DialogTitle>Add New Raw Material</DialogTitle>
           <DialogDescription>
-            {itemType === "product"
-              ? "Add a new product to your inventory with pricing information"
-              : "Add a new raw material with supplier and stock details"}
+            Add a new raw material with supplier and stock details
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="itemType">Item Type</Label>
-            <Select
-              value={itemType}
-              onValueChange={(value: "product" | "raw_material") => {
-                setItemType(value)
-                // Reset form when switching types
-                setFormData({
-                  name: "",
-                  description: "",
-                  category: "",
-                  unit_price: "",
-                  cost_price: "",
-                  barcode: "",
-                  unit: "",
-                  supplier: "",
-                  stock_quantity: "",
-                  minimum_stock: "",
-                })
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select item type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="product">Finished Product</SelectItem>
-                <SelectItem value="raw_material">Raw Material</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="name">Name *</Label>
@@ -187,68 +142,33 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
-                placeholder={itemType === "product" ? "Product name" : "Raw material name"}
+                placeholder="Raw material name"
               />
             </div>
 
-            {itemType === "product" && (
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) => setFormData({ ...formData, category: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {itemType === "raw_material" && (
-              <div className="space-y-2">
-                <Label htmlFor="unit">Unit *</Label>
-                <Select
-                  value={formData.unit}
-                  onValueChange={(value) => setFormData({ ...formData, unit: value })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {rawMaterialUnits.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="unit">Unit *</Label>
+              <Select
+                value={formData.unit}
+                onValueChange={(value) => setFormData({ ...formData, unit: value })}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rawMaterialUnits.map((unit) => (
+                    <SelectItem key={unit} value={unit}>
+                      {unit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {itemType === "product" && (
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Product description (optional)"
-              />
-            </div>
-          )}
-
           <div className="space-y-2">
-            <Label htmlFor="barcode">Barcode</Label>
+            <Label htmlFor="barcode">Barcode/SKU</Label>
             <Input
               id="barcode"
               value={formData.barcode}
@@ -257,74 +177,73 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="cost_price">{itemType === "product" ? "Cost Price ($) *" : "Cost per Unit ($) *"}</Label>
-              <Input
-                id="cost_price"
-                type="number"
-                step="0.01"
-                value={formData.cost_price}
-                onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
-                required
-                placeholder="0.00"
-              />
-            </div>
-
-            {itemType === "product" && (
-              <div className="space-y-2">
-                <Label htmlFor="unit_price">Selling Price ($) *</Label>
-                <Input
-                  id="unit_price"
-                  type="number"
-                  step="0.01"
-                  value={formData.unit_price}
-                  onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-                  required
-                  placeholder="0.00"
-                />
-              </div>
-            )}
+          <div className="space-y-2">
+            <Label htmlFor="cost_price">Cost per Unit ($) *</Label>
+            <Input
+              id="cost_price"
+              type="number"
+              step="0.01"
+              value={formData.cost_price}
+              onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
+              required
+              placeholder="0.00"
+            />
           </div>
 
-          {itemType === "raw_material" && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier</Label>
-                <Input
-                  id="supplier"
-                  value={formData.supplier}
-                  onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                  placeholder="Supplier name (optional)"
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="supplier">Supplier</Label>
+            <Input
+              id="supplier"
+              value={formData.supplier}
+              onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+              placeholder="Supplier name (optional)"
+            />
+          </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="stock_quantity">Initial Stock Quantity</Label>
-                  <Input
-                    id="stock_quantity"
-                    type="number"
-                    step="0.01"
-                    value={formData.stock_quantity}
-                    onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="minimum_stock">Minimum Stock Level</Label>
-                  <Input
-                    id="minimum_stock"
-                    type="number"
-                    step="0.01"
-                    value={formData.minimum_stock}
-                    onChange={(e) => setFormData({ ...formData, minimum_stock: e.target.value })}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-            </>
-          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="stock_quantity">Initial Stock Quantity</Label>
+              <Input
+                id="stock_quantity"
+                type="number"
+                step="0.01"
+                value={formData.stock_quantity}
+                onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="minimum_stock">Minimum Stock Level</Label>
+              <Input
+                id="minimum_stock"
+                type="number"
+                step="0.01"
+                value={formData.minimum_stock}
+                onChange={(e) => setFormData({ ...formData, minimum_stock: e.target.value })}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="location">Storage Location</Label>
+            <Input
+              id="location"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              placeholder="e.g., Warehouse A, Shelf 3"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Input
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Additional notes (optional)"
+            />
+          </div>
 
           <DialogFooter className="pt-6">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
@@ -337,7 +256,7 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: AddItemDialogPr
                   Creating...
                 </>
               ) : (
-                `Add ${itemType === "product" ? "Product" : "Raw Material"}`
+                "Add Raw Material"
               )}
             </Button>
           </DialogFooter>

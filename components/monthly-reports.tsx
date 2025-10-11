@@ -122,26 +122,26 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
   const categoryData = [
     {
       category: "Finished Products",
-      value: monthlyData.inventory
+      value: (monthlyData.inventory || [])
         .filter((item: any) => item.stock_status !== "Low Stock")
-        .reduce((sum: number, item: any) => sum + item.inventory_value, 0),
-      count: monthlyData.inventory.filter((item: any) => item.stock_status !== "Low Stock").length,
+        .reduce((sum: number, item: any) => sum + (item.inventory_value || 0), 0),
+      count: (monthlyData.inventory || []).filter((item: any) => item.stock_status !== "Low Stock").length,
     },
     {
       category: "Low Stock Items",
-      value: monthlyData.inventory
+      value: (monthlyData.inventory || [])
         .filter((item: any) => item.stock_status === "Low Stock")
-        .reduce((sum: number, item: any) => sum + item.inventory_value, 0),
-      count: monthlyData.inventory.filter((item: any) => item.stock_status === "Low Stock").length,
+        .reduce((sum: number, item: any) => sum + (item.inventory_value || 0), 0),
+      count: (monthlyData.inventory || []).filter((item: any) => item.stock_status === "Low Stock").length,
     },
   ]
 
-  const profitabilityData = monthlyData.distributions.map((dist: any) => ({
-    name: dist.product_name,
-    revenue: dist.total_value,
-    cost: dist.cost_of_goods_sold,
-    profit: dist.gross_profit,
-    margin: dist.profit_margin_percent,
+  const profitabilityData = (monthlyData.distributions || []).map((dist: any) => ({
+    name: dist.product_name || 'Unknown',
+    revenue: dist.total_value || dist.total_amount || 0,
+    cost: dist.cost_of_goods_sold || 0,
+    profit: dist.gross_profit || 0,
+    margin: dist.profit_margin_percent || 0,
   }))
 
   return (
@@ -240,7 +240,7 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
                 <Users className="h-4 w-4 text-indigo-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-slate-900">{monthlyData.distributions.length}</div>
+                <div className="text-2xl font-bold text-slate-900">{(monthlyData.distributions || []).length}</div>
                 <p className="text-xs text-slate-500">Total orders</p>
               </CardContent>
             </Card>
@@ -269,7 +269,7 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={profitabilityData.slice(0, 10)}>
+                  <ComposedChart data={(profitabilityData || []).slice(0, 10)}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} fontSize={12} />
                     <YAxis />
@@ -295,7 +295,7 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ category, value }) => `${category}: ${formatCurrency(value)}`}
+                      label={(entry: any) => `${entry.category}: ${formatCurrency(entry.value)}`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -323,7 +323,7 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={monthlyData.production.slice(0, 10)}>
+                  <BarChart data={(monthlyData.production || []).slice(0, 10)}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="product_name" angle={-45} textAnchor="end" height={100} fontSize={12} />
                     <YAxis />
@@ -341,9 +341,9 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {monthlyData.rawMaterials.slice(0, 5).map((material: any, index: number) => (
+                  {(monthlyData.rawMaterials || []).slice(0, 5).map((material: any, index: number) => (
                     <div
-                      key={material.material_id}
+                      key={material.material_id || index}
                       className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
                     >
                       <div className="flex items-center gap-3">
@@ -352,15 +352,15 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
                           style={{ backgroundColor: COLORS[index % COLORS.length] }}
                         />
                         <div>
-                          <div className="font-medium">{material.material_name}</div>
+                          <div className="font-medium">{material.material_name || 'Unknown Material'}</div>
                           <div className="text-sm text-slate-600">
-                            {formatNumber(material.total_used)} {material.unit} used
+                            {formatNumber(material.total_used || 0)} {material.unit || 'units'} used
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium">{formatCurrency(material.total_cost_used)}</div>
-                        <div className="text-sm text-slate-500">{material.stock_status}</div>
+                        <div className="font-medium">{formatCurrency(material.total_cost_used || 0)}</div>
+                        <div className="text-sm text-slate-500">{material.stock_status || 'N/A'}</div>
                       </div>
                     </div>
                   ))}
@@ -380,19 +380,28 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
-                <AreaChart data={monthlyData.financial}>
+                <AreaChart data={monthlyData.financial || []}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip formatter={(value: number) => [formatCurrency(value)]} />
                   <Area
                     type="monotone"
-                    dataKey="total_amount"
+                    dataKey="revenue"
                     stackId="1"
                     stroke="#10b981"
                     fill="#10b981"
                     fillOpacity={0.6}
-                    name="Total Amount"
+                    name="Revenue"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="expenses"
+                    stackId="2"
+                    stroke="#ef4444"
+                    fill="#ef4444"
+                    fillOpacity={0.6}
+                    name="Expenses"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -410,23 +419,23 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {monthlyData.distributions
-                  .sort((a: any, b: any) => b.gross_profit - a.gross_profit)
+                {(monthlyData.distributions || [])
+                  .sort((a: any, b: any) => (b.gross_profit || 0) - (a.gross_profit || 0))
                   .slice(0, 10)
                   .map((dist: any, index: number) => (
-                    <div key={dist.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div key={dist.id || index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                       <div className="flex items-center gap-3">
                         <div className="font-bold text-lg">#{index + 1}</div>
                         <div>
-                          <div className="font-medium">{dist.recipient_name}</div>
+                          <div className="font-medium">{dist.recipient_name || 'Unknown Recipient'}</div>
                           <div className="text-sm text-slate-600">
-                            {dist.product_name} × {formatNumber(dist.quantity)}
+                            {dist.product_name || 'Unknown Product'} × {formatNumber(dist.quantity || 0)}
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-green-600">{formatCurrency(dist.gross_profit)}</div>
-                        <div className="text-sm text-slate-500">{dist.profit_margin_percent.toFixed(1)}% margin</div>
+                        <div className="font-bold text-green-600">{formatCurrency(dist.gross_profit || 0)}</div>
+                        <div className="text-sm text-slate-500">{(dist.profit_margin_percent || 0).toFixed(1)}% margin</div>
                       </div>
                     </div>
                   ))}

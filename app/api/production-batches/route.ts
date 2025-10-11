@@ -14,37 +14,47 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { batch_number, product_id, quantity_produced, production_date, total_cost, notes, costs } = body
+    const { 
+      productId, product_id, 
+      productName, product_name,
+      quantityProduced, quantity_produced, 
+      rawMaterialsUsed, raw_materials_used, rawMaterials,
+      otherCosts, other_costs,
+      notes,
+      batch_number,
+      production_date,
+      total_cost,
+      costs
+    } = body
+
+    // Support both camelCase and snake_case field names
+    const finalProductId = productId || product_id
+    const finalProductName = productName || product_name
+    const finalQuantityProduced = quantityProduced || quantity_produced
+    const finalRawMaterialsUsed = rawMaterialsUsed || raw_materials_used || rawMaterials || []
+    const finalOtherCosts = otherCosts || other_costs || total_cost || 0
 
     // Validate required fields
-    const errors = validateRequired({ batch_number, product_id, quantity_produced, production_date, total_cost })
+    const errors = validateRequired({ 
+      productId: finalProductId, 
+      quantityProduced: finalQuantityProduced 
+    })
     if (errors.length > 0) {
       return NextResponse.json(createErrorResponse(errors.join(", ")), { status: 400 })
     }
 
-    // Create the production batch
+    // Create the production batch with automatic cost calculation and inventory updates
     const newBatch = await DatabaseClient.createProductionBatch({
-      batch_number,
-      product_id: Number.parseInt(product_id),
-      quantity_produced: Number.parseFloat(quantity_produced),
-      production_date,
-      total_cost: Number.parseFloat(total_cost),
-      notes,
+      productId: Number.parseInt(finalProductId),
+      productName: finalProductName,
+      quantityProduced: Number.parseFloat(finalQuantityProduced),
+      rawMaterialsUsed: finalRawMaterialsUsed,
+      otherCosts: Number.parseFloat(finalOtherCosts) || 0,
+      notes: notes || '',
+      batchNumber: batch_number,
+      productionDate: production_date,
+      costs: costs
     })
-
-    // Create production costs if provided
-    if (costs && costs.length > 0) {
-      const formattedCosts = costs.map((cost: any) => ({
-        batch_id: newBatch.id,
-        cost_type: cost.cost_type,
-        item_name: cost.item_name,
-        quantity: cost.quantity ? Number.parseFloat(cost.quantity) : null,
-        unit_cost: Number.parseFloat(cost.unit_cost),
-        raw_material_id: cost.raw_material_id ? Number.parseInt(cost.raw_material_id) : null,
-      }))
-
-      await DatabaseClient.createProductionCosts(formattedCosts)
-    }
 
     return NextResponse.json(createSuccessResponse(newBatch))
   } catch (error) {

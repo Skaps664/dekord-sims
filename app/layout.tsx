@@ -10,9 +10,9 @@ export const metadata: Metadata = {
   description: 'dekord stock and inventory management system',
   generator: 'dekord-sims',
   icons: {
-    icon: '/favicon-white.png',
-    shortcut: '/favicon-white.png',
-    apple: '/favicon-white.png',
+    icon: '/favicon-white.ico',
+    shortcut: '/favicon-white.ico',
+    apple: '/favicon-white.ico',
   },
 }
 

@@ -85,11 +85,15 @@ export function formatDate(date: Date | string): string {
   return d.toISOString().split("T")[0]
 }
 
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount?: number | string | null): string {
+  // Accept number, numeric-string, or undefined/null and return a safe formatted string.
+  if (amount === null || amount === undefined || amount === "") return "-"
+  const num = typeof amount === "string" ? Number.parseFloat(amount) : Number(amount)
+  if (isNaN(num)) return "-"
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-  }).format(amount)
+  }).format(num)
 }
 
 export function formatNumber(num: number, decimals = 2): string {

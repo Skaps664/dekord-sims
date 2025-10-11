@@ -1,475 +1,726 @@
-import { MongoClient, Db, Collection } from "mongodb"
-// Load .env for local development (ensures MONGODB_URI is available when running `next dev` or node scripts)
+import { MongoClient, Db, ObjectId } from 'mongodb'
+
+// Load environment variables
 try {
-  // Use require here so it works in both ESM and CJS runtime used by Next
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('dotenv').config()
 } catch (e) {
-  // ignore if dotenv is not installed in production
+  // dotenv not available in production
 }
 
-// We'll use MONGODB_URI instead of DATABASE_URL
-const MONGO_URI = process.env.MONGODB_URI || process.env.DATABASE_URL || ""
+const MONGODB_URI = process.env.MONGODB_URI || ""
 
-// Persist client and db across module reloads (important in Next dev server)
+if (!MONGODB_URI) {
+  throw new Error('Please define MONGODB_URI environment variable in .env')
+}
+
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace NodeJS {
-    interface Global {
-      _mongoClient?: MongoClient
-      _mongoDb?: Db
-    }
-  }
+  var _mongoClient: MongoClient | undefined
+  var _mongoDb: Db | undefined
 }
 
-let client: MongoClient | null = (global as any)._mongoClient ?? null
-let db: Db | null = (global as any)._mongoDb ?? null
-let initError: string | null = null
+let client: MongoClient
+let db: Db
 
-async function connect() {
-  if (db) return db
-  if (initError) throw new Error(initError)
-  if (!MONGO_URI) {
-    initError = "MONGODB_URI (or DATABASE_URL) environment variable is not set"
-    throw new Error(initError)
+async function connect(): Promise<Db> {
+  if (global._mongoDb) {
+    return global._mongoDb
   }
 
-  try {
-    // parse the URI safely to extract host/db for logs (don't log credentials)
-    let hostInfo = "(unknown)"
-    try {
-      const url = new URL(MONGO_URI)
-      const pathname = url.pathname.replace(/^\//, "")
-      hostInfo = `${url.protocol}//${url.host}/${pathname || "(default)"}`
-    } catch (parseErr) {
-      // If parsing fails, continue; MongoClient will validate
-      hostInfo = "(invalid-uri)"
-    }
+  // Add connection options to handle SSL/TLS issues
+  const options = {
+    tls: true,
+    tlsAllowInvalidCertificates: false,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  }
 
-  console.log("[db] Connecting to MongoDB:", hostInfo)
-  // Configure client with reasonable timeouts and appName for easier monitoring
-  client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 5000, appName: "dekord-sims" })
+  client = new MongoClient(MONGODB_URI, options)
   await client.connect()
-    // default DB name from URI or fallback to 'appdb'
-    const url = new URL(MONGO_URI)
-    const pathname = url.pathname.replace(/^\//, "")
-    const dbName = pathname || "appdb"
-    db = client.db(dbName)
-    // persist to global so hot reloads reuse the same connection
-    try {
-      ;(global as any)._mongoClient = client
-      ;(global as any)._mongoDb = db
-    } catch (e) {
-      // ignore if cannot write to global
-    }
-    // Ensure counters collection exists for auto-increment ids
-  const counters = db.collection<any>("counters")
-  await counters.updateOne({ _id: "productId" }, { $setOnInsert: { seq: 0 } }, { upsert: true })
-  await counters.updateOne({ _id: "inventoryId" }, { $setOnInsert: { seq: 0 } }, { upsert: true })
-  await counters.updateOne({ _id: "rawMaterialId" }, { $setOnInsert: { seq: 0 } }, { upsert: true })
-  await counters.updateOne({ _id: "productionBatchId" }, { $setOnInsert: { seq: 0 } }, { upsert: true })
-  await counters.updateOne({ _id: "distributionId" }, { $setOnInsert: { seq: 0 } }, { upsert: true })
-  await counters.updateOne({ _id: "financialTransactionId" }, { $setOnInsert: { seq: 0 } }, { upsert: true })
-    return db
-  } catch (err: any) {
-    initError = err?.message || String(err)
-    console.error("[db] Failed to initialize MongoDB client:", initError)
-    throw err
-  }
+  
+  const dbName = new URL(MONGODB_URI).pathname.slice(1) || 'sims_db'
+  db = client.db(dbName)
+
+  global._mongoClient = client
+  global._mongoDb = db
+
+  return db
 }
 
-async function getNextSequence(name: string) {
-  const database = await connect()
-  const counters = database.collection<any>("counters")
-  const result = await counters.findOneAndUpdate(
-    { _id: name },
-    { $inc: { seq: 1 } },
-    { returnDocument: "after", upsert: true },
-  )
-  if (!result.value) throw new Error("Failed to get sequence value for " + name)
-  return result.value.seq
-}
-
-function nowISO() {
+function nowISO(): string {
   return new Date().toISOString()
 }
 
-export class DatabaseClient {
-  static checkInitialization() {
-    if (initError) {
-      return { initialized: false, error: initError }
-    }
-    if (!db) {
-      try {
-        // attempt to connect synchronously-ish
-        // Note: callers should call async methods which will connect
-        // Here we just report not-initialized
-        return { initialized: false, error: "MongoDB client not initialized. Call a DB method to initialize." }
-      } catch (err: any) {
-        return { initialized: false, error: err.message }
-      }
-    }
-    return { initialized: true, error: null }
+async function getNextSequence(name: string): Promise<number> {
+  const database = await connect()
+  const result = await database.collection('counters').findOneAndUpdate(
+    { _id: name } as any,
+    { $inc: { sequence_value: 1 } },
+    { upsert: true, returnDocument: 'after' }
+  )
+  // findOneAndUpdate returns an object with a `value` property containing the document
+  // Ensure we read the sequence_value from result.value.sequence_value
+  const value = (result as any)?.value
+  if (value && typeof value.sequence_value === 'number') {
+    return value.sequence_value
   }
+  return 1
+}
 
+export class DatabaseClient {
   static async checkDatabaseSetup() {
     try {
-      await connect()
-      // Check for required collections
-      const required = [
-        "products",
-        "inventory",
-        "raw_materials",
-        "production_batches",
-        "distributions",
-        "financial_transactions",
-      ]
-      const collections = await db!.listCollections().toArray()
-      const existing = collections.map((c) => c.name)
-      const missing = required.filter((r) => !existing.includes(r))
-      return { isSetup: missing.length === 0, existingTables: existing, missingTables: missing, connected: true }
-    } catch (err: any) {
-      console.error("MongoDB connection error:", err)
-      return {
-        isSetup: false,
+      const database = await connect()
+      const collections = await database.listCollections().toArray()
+      const collectionNames = collections.map(c => c.name)
+      
+      return { 
+        isSetup: true, 
+        connected: true,
+        existingTables: collectionNames,
+        missingTables: []
+      }
+    } catch (error) {
+      return { 
+        isSetup: false, 
+        connected: false, 
         existingTables: [],
-        missingTables: [
-          "products",
-          "inventory",
-          "raw_materials",
-          "production_batches",
-          "distributions",
-          "financial_transactions",
-        ],
-        connected: false,
-        error: err.message || String(err),
+        missingTables: ['products', 'inventory', 'raw_materials', 'production_batches', 'distributions', 'production_costs', 'financial_transactions'],
+        error: error instanceof Error ? error.message : String(error) 
       }
     }
   }
 
-  // Products
   static async getProducts() {
-    await connect()
-    const productsColl = db!.collection("products")
-    const inventoryColl = db!.collection("inventory")
-
-    const products = await productsColl.find().sort({ name: 1 }).toArray()
-    // join inventory
-    const items = await Promise.all(
-      products.map(async (p: any) => {
-        const inv = await inventoryColl.findOne({ product_id: p.id })
-        return {
-          ...p,
-          current_stock: inv?.quantity ?? 0,
-          minimum_stock: inv?.minimum_stock ?? 0,
-          location: inv?.location ?? "Not Set",
-        }
-      }),
-    )
-    return items
+    const database = await connect()
+    const products = await database.collection('products').find({}).toArray()
+    return products.map(p => ({ ...p, id: (p.id !== undefined && p.id !== null) ? p.id : p._id.toString() }))
   }
 
-  static async createProduct(product: any) {
-    await connect()
-    const productsColl = db!.collection("products")
-    const inventoryColl = db!.collection("inventory")
-    const id = await getNextSequence("productId")
-    const doc = {
+  static async createProduct(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('productId')
+    
+    // Handle date fields: use provided value, or null for empty strings, or default for undefined
+    const ideaCreationDate = data.ideaCreationDate !== undefined 
+      ? (data.ideaCreationDate === '' ? null : data.ideaCreationDate)
+      : nowISO()
+    
+    const productionStartDate = data.productionStartDate !== undefined
+      ? (data.productionStartDate === '' ? null : data.productionStartDate)
+      : null
+    
+    const product = {
       id,
-      name: product.name,
-      description: product.description ?? null,
-      category: product.category ?? null,
-      unit_price: product.unit_price,
-      cost_price: product.cost_price,
-      barcode: product.barcode ?? null,
-      created_at: nowISO(),
-      updated_at: nowISO(),
+      name: data.name,
+      description: data.description || '',
+      category: data.category || 'General',
+      type: data.type || 'Physical',
+      ideaCreationDate,
+      productionStartDate,
+      additionalInfo: data.additionalInfo || '',
+      isActive: data.isActive ?? true,
+      createdAt: nowISO(),
+      updatedAt: nowISO()
     }
-    await productsColl.insertOne(doc)
-    // create corresponding inventory
-    await inventoryColl.insertOne({ product_id: id, quantity: 0, minimum_stock: 10, maximum_stock: 500, location: "Warehouse A", last_updated: nowISO() })
-    return doc
+    
+    const result = await database.collection('products').insertOne(product)
+    return { ...product, _id: result.insertedId }
   }
 
-  static async updateProduct(id: number, updates: any) {
-    await connect()
-    const productsColl = db!.collection("products")
-    const updateDoc: any = { updated_at: nowISO() }
-    if (updates.name !== undefined) updateDoc.name = updates.name
-    if (updates.description !== undefined) updateDoc.description = updates.description
-    if (updates.category !== undefined) updateDoc.category = updates.category
-    if (updates.unit_price !== undefined) updateDoc.unit_price = updates.unit_price
-    if (updates.cost_price !== undefined) updateDoc.cost_price = updates.cost_price
-    if (updates.barcode !== undefined) updateDoc.barcode = updates.barcode
-    await productsColl.updateOne({ id }, { $set: updateDoc })
-    return await productsColl.findOne({ id })
-  }
-
-  static async deleteProduct(id: number) {
-    await connect()
-    const productsColl = db!.collection("products")
-    await productsColl.deleteOne({ id })
-    return { success: true }
-  }
-
-  // Inventory
-  static async getInventory() {
-    await connect()
-    const productsColl = db!.collection("products")
-    const inventoryColl = db!.collection("inventory")
-
-    const products = await productsColl.find().sort({ name: 1 }).toArray()
-    const inventory = await Promise.all(
-      products.map(async (p: any) => {
-        const i = await inventoryColl.findOne({ product_id: p.id })
-        const quantity = i?.quantity ?? 0
-        const minimum_stock = i?.minimum_stock ?? 0
-        const maximum_stock = i?.maximum_stock ?? 0
-        const location = i?.location ?? "Not Set"
-        const inventory_value = quantity * (p.cost_price ?? 0)
-        let stock_status = "Normal"
-        if (quantity <= minimum_stock) stock_status = "Low Stock"
-        if (maximum_stock && quantity >= maximum_stock) stock_status = "Overstock"
-        return {
-          product_id: p.id,
-          product_name: p.name,
-          category: p.category,
-          unit_price: p.unit_price,
-          cost_price: p.cost_price,
-          current_stock: quantity,
-          minimum_stock,
-          maximum_stock,
-          location,
-          inventory_value,
-          stock_status,
-          last_updated: i?.last_updated,
-        }
-      }),
-    )
-    return inventory
-  }
-
-  static async updateInventory(productId: number, updates: any) {
-    await connect()
-    const inventoryColl = db!.collection("inventory")
-    const updateDoc: any = { last_updated: nowISO() }
-    if (updates.quantity !== undefined) updateDoc.quantity = updates.quantity
-    if (updates.minimum_stock !== undefined) updateDoc.minimum_stock = updates.minimum_stock
-    if (updates.maximum_stock !== undefined) updateDoc.maximum_stock = updates.maximum_stock
-    if (updates.location !== undefined) updateDoc.location = updates.location
-    await inventoryColl.updateOne({ product_id: productId }, { $set: updateDoc })
-    return await inventoryColl.findOne({ product_id: productId })
-  }
-
-  // Raw materials
-  static async getRawMaterials() {
-    await connect()
-    const coll = db!.collection("raw_materials")
-    return await coll.find().sort({ name: 1 }).toArray()
-  }
-
-  static async createRawMaterial(material: any) {
-    await connect()
-    const coll = db!.collection("raw_materials")
-    const id = await getNextSequence("rawMaterialId")
-    const doc = {
-      id,
-      name: material.name,
-      unit: material.unit,
-      cost_per_unit: material.cost_per_unit,
-      supplier: material.supplier ?? null,
-      stock_quantity: material.stock_quantity ?? 0,
-      minimum_stock: material.minimum_stock ?? 0,
-      created_at: nowISO(),
-      updated_at: nowISO(),
-    }
-    await coll.insertOne(doc)
-    return doc
-  }
-
-  // Production batches
-  static async getProductionBatches() {
-    await connect()
-    const coll = db!.collection("production_batches")
-    // Use aggregation with $lookup to join products in a single query (avoids N+1 lookups)
-    const pipeline = [
-      { $sort: { production_date: -1 } },
-      { $lookup: { from: "products", localField: "product_id", foreignField: "id", as: "product" } },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
-      { $addFields: { product_name: "$product.name" } },
-      { $project: { product: 0 } },
-    ]
-    return await coll.aggregate(pipeline).toArray()
-  }
-
-  static async createProductionBatch(batch: any) {
-    await connect()
-    const coll = db!.collection("production_batches")
-    const inventoryColl = db!.collection("inventory")
-    const finColl = db!.collection("financial_transactions")
-    const id = await getNextSequence("productionBatchId")
-    const doc = { id, ...batch, created_at: nowISO(), updated_at: nowISO() }
-    await coll.insertOne(doc)
-    // Update inventory quantity
-    await inventoryColl.updateOne({ product_id: batch.product_id }, { $inc: { quantity: batch.quantity_produced }, $set: { last_updated: nowISO() } })
-    // Record financial transaction
-    await finColl.insertOne({ id: await getNextSequence("financialTransactionId"), transaction_type: "production_cost", reference_type: "production_batch", reference_id: id, amount: -batch.total_cost, description: `Production costs for ${batch.batch_number}`, transaction_date: batch.production_date, created_at: nowISO() })
-    return doc
-  }
-
-  static async createProductionCosts(costs: any[]) {
-    await connect()
-    const coll = db!.collection("production_costs")
-    const rawColl = db!.collection("raw_materials")
-    const created: any[] = []
-    for (const cost of costs) {
-      const id = await getNextSequence("productionCostId")
-      const doc = { id, ...cost, created_at: nowISO() }
-      await coll.insertOne(doc)
-      created.push(doc)
-      if (cost.raw_material_id && cost.quantity) {
-        await rawColl.updateOne({ id: cost.raw_material_id }, { $inc: { stock_quantity: -cost.quantity }, $set: { updated_at: nowISO() } })
+  static async updateProduct(id: string, data: any) {
+    const database = await connect()
+    
+    // Remove immutable fields
+    const { _id, id: idField, createdAt, ...updateData } = data
+    
+    // Try to parse as numeric ID first, then try ObjectId
+    let query
+    const numericId = parseInt(id)
+    if (!isNaN(numericId)) {
+      query = { id: numericId }
+    } else {
+      try {
+        query = { _id: new ObjectId(id) }
+      } catch (e) {
+        throw new Error('Invalid product ID')
       }
     }
-    return created
+    
+    const result = await database.collection('products').findOneAndUpdate(
+      query,
+      { $set: { ...updateData, updatedAt: nowISO() } },
+      { returnDocument: 'after' }
+    )
+    
+    if (!result || !result.value) {
+      throw new Error('Product not found')
+    }
+    
+    return result.value || result
   }
 
-  // Distributions
+  static async deleteProduct(id: string | number) {
+    const database = await connect()
+    
+    console.log('[DB deleteProduct] Received ID:', id, 'Type:', typeof id)
+    
+    // Try to delete by MongoDB _id first (if it's a string that looks like ObjectId)
+    if (typeof id === 'string' && id.length === 24) {
+      try {
+        console.log('[DB deleteProduct] Trying MongoDB _id deletion')
+        const result = await database.collection('products').deleteOne({ _id: new ObjectId(id) })
+        console.log('[DB deleteProduct] MongoDB _id deletion result:', result.deletedCount)
+        if (result.deletedCount > 0) {
+          return true
+        }
+      } catch (e) {
+        console.log('[DB deleteProduct] MongoDB _id deletion failed:', e instanceof Error ? e.message : e)
+        // If ObjectId conversion fails, fall through to numeric ID
+      }
+    }
+    
+    // Try numeric ID
+    const numericId = typeof id === 'string' ? parseInt(id) : id
+    console.log('[DB deleteProduct] Trying numeric ID deletion:', numericId)
+    if (!isNaN(numericId)) {
+      const result = await database.collection('products').deleteOne({ id: numericId })
+      console.log('[DB deleteProduct] Numeric ID deletion result:', result.deletedCount)
+      return result.deletedCount > 0
+    }
+    
+    console.log('[DB deleteProduct] All deletion attempts failed')
+    return false
+  }
+
+  static async getInventory() {
+    const database = await connect()
+    const inventory = await database.collection('inventory').find({}).toArray()
+    return inventory.map(i => ({ ...i, id: (i.id !== undefined && i.id !== null) ? i.id : i._id.toString() }))
+  }
+
+  static async getInventoryItem(id: number) {
+    const database = await connect()
+    const item = await database.collection('inventory').findOne({ id })
+    if (!item) return null
+    return { ...item, id: (item.id !== undefined && item.id !== null) ? item.id : item._id.toString() }
+  }
+
+  static async getInventoryByType(type: 'raw_material' | 'finished_product') {
+    const database = await connect()
+    const inventory = await database.collection('inventory').find({ item_type: type }).toArray()
+    return inventory.map(i => ({ ...i, id: (i.id !== undefined && i.id !== null) ? i.id : i._id.toString() }))
+  }
+
+  static async createInventoryItem(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('inventoryId')
+    const item = {
+      id,
+      ...data,
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    }
+    
+    const result = await database.collection('inventory').insertOne(item)
+    return { ...item, _id: result.insertedId }
+  }
+
+  static async updateInventory(id: string, data: any) {
+    const database = await connect()
+    
+    // Remove immutable fields that shouldn't be updated
+    const { _id, id: idField, ...updateData } = data
+    
+    // Try to parse as numeric ID first, then try ObjectId
+    let query
+    const numericId = parseInt(id)
+    if (!isNaN(numericId)) {
+      query = { id: numericId }
+    } else {
+      try {
+        query = { _id: new ObjectId(id) }
+      } catch (e) {
+        throw new Error('Invalid inventory item ID')
+      }
+    }
+    
+    const result = await database.collection('inventory').findOneAndUpdate(
+      query,
+      { $set: { ...updateData, last_updated: nowISO() } },
+      { returnDocument: 'after' }
+    )
+    
+    if (!result || !result.value) {
+      throw new Error('Inventory item not found')
+    }
+    
+    // Return just the updated document (MongoDB v4+ returns result.value, older versions return result directly)
+    return result.value || result
+  }
+
+  static async deleteInventoryItem(id: string | number) {
+    const database = await connect()
+    const numericId = typeof id === 'string' ? parseInt(id) : id
+    const result = await database.collection('inventory').deleteOne({ id: numericId })
+    return result.deletedCount > 0
+  }
+
+  static async moveProductionToInventory(batchId: string, data: any) {
+    const database = await connect()
+    
+    // Get the production batch
+    const batch = await database.collection('production_batches').findOne({ id: parseInt(batchId) })
+    if (!batch) {
+      throw new Error('Production batch not found')
+    }
+    
+    // Create finished product inventory item
+    const inventoryId = await getNextSequence('inventoryId')
+    const finishedProduct = {
+      id: inventoryId,
+      item_type: 'finished_product',
+      product_id: batch.productId,
+      product_name: batch.productName,
+      batch_id: batchId,
+      quantity: data.quantity || batch.quantityProduced,
+      production_cost_per_unit: batch.costPerUnit,
+      selling_price_per_unit: data.sellingPrice || 0,
+      location: data.location || 'Main Warehouse',
+      notes: data.notes || `From production batch ${batch.batchNumber}`,
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    }
+    
+    const result = await database.collection('inventory').insertOne(finishedProduct)
+    return { ...finishedProduct, _id: result.insertedId }
+  }
+
+  static async getRawMaterials() {
+    const database = await connect()
+    const materials = await database.collection('inventory').find({ item_type: 'raw_material' }).toArray()
+    return materials.map(m => ({ ...m, id: (m.id !== undefined && m.id !== null) ? m.id : m._id.toString() }))
+  }
+
+  static async createRawMaterial(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('rawMaterialId')
+    const material = {
+      id,
+      ...data,
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    }
+    
+    const result = await database.collection('raw_materials').insertOne(material)
+    return { ...material, _id: result.insertedId }
+  }
+
+  static async getProductionBatches() {
+    const database = await connect()
+    const batches = await database.collection('production_batches').find({}).toArray()
+    const mappedBatches = batches.map(b => ({
+      ...b,
+      // Keep the original numeric id field if it exists, otherwise use _id
+      id: (b.id !== undefined && b.id !== null) ? b.id : b._id.toString(),
+      _id: b._id.toString(), // Keep MongoDB ID as string for reference
+      // Provide snake_case aliases for frontend compatibility
+      production_date: (b.productionDate || b.production_date) || null,
+      quantity_produced: (b.quantityProduced || b.quantity_produced) || 0,
+      product_name: (b.productName || b.product_name) || null,
+      raw_materials_used: (b.rawMaterialsUsed || b.raw_materials_used) || [],
+    }))
+    console.log('[DB getProductionBatches] Found batches:', mappedBatches.length, 'Sample batch:', mappedBatches[0] ? { id: mappedBatches[0].id, type: typeof mappedBatches[0].id, batchNumber: (mappedBatches[0] as any).batchNumber || (mappedBatches[0] as any).batch_number } : 'none')
+    return mappedBatches
+  }
+
+  static async createProductionBatch(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('productionBatchId')
+    
+    // Calculate total cost from costs array or from raw materials used
+    let totalCost = 0
+    if (data.costs && Array.isArray(data.costs)) {
+      // Sum all costs from the costs array
+      for (const cost of data.costs) {
+        const quantity = cost.quantity || 1
+        const unitCost = cost.unit_cost || 0
+        totalCost += quantity * unitCost
+      }
+    } else if (data.rawMaterialsUsed && Array.isArray(data.rawMaterialsUsed)) {
+      // Fallback: calculate from raw materials
+      for (const material of data.rawMaterialsUsed) {
+        totalCost += (material.quantityUsed || material.quantity || 0) * (material.unitCost || material.unit_cost || 0)
+      }
+      if (data.otherCosts || data.total_cost) {
+        totalCost += (data.otherCosts || data.total_cost || 0)
+      }
+    } else if (data.total_cost) {
+      totalCost = data.total_cost
+    }
+
+    const costPerUnit = totalCost / (data.quantityProduced || data.quantity_produced || 1)
+    
+    const batch = {
+      id,
+      productId: data.productId || data.product_id,
+      productName: data.productName || data.product_name,
+      quantityProduced: data.quantityProduced || data.quantity_produced,
+      quantity_remaining: data.quantityProduced || data.quantity_produced, // Track remaining quantity
+      rejected_units: 0, // Track rejected units
+      rawMaterialsUsed: data.rawMaterialsUsed || data.raw_materials_used || [],
+      costs: data.costs || [],
+      otherCosts: data.otherCosts || data.other_costs || 0,
+      totalCost,
+      costPerUnit,
+      batchNumber: data.batchNumber || data.batch_number || `BATCH-${id}`,
+      productionDate: data.productionDate || data.production_date || nowISO(),
+      notes: data.notes || '',
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    }
+    
+    // Update inventory: decrease raw materials
+    if (batch.rawMaterialsUsed && Array.isArray(batch.rawMaterialsUsed)) {
+      for (const material of batch.rawMaterialsUsed) {
+        const materialId = material.raw_material_id || material.materialId
+        const quantityUsed = material.quantity || material.quantityUsed || 0
+        
+        if (materialId && quantityUsed > 0) {
+          await database.collection('inventory').updateOne(
+            { id: Number.parseInt(materialId), item_type: 'raw_material' },
+            { 
+              $inc: { quantity: -quantityUsed, current_stock: -quantityUsed }, 
+              $set: { last_updated: nowISO() } 
+            }
+          )
+        }
+      }
+    }
+    
+    // DO NOT add to inventory automatically - require import workflow instead
+    // Products must be imported via importProductionBatch() with quality control
+    
+    const result = await database.collection('production_batches').insertOne(batch)
+    return { ...batch, _id: result.insertedId }
+  }
+
+  static async createProductionCosts(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('productionCostId')
+    const cost = {
+      id,
+      ...data,
+      createdAt: nowISO()
+    }
+    
+    const result = await database.collection('production_costs').insertOne(cost)
+    return { ...cost, _id: result.insertedId }
+  }
+
+  static async importProductionBatch(batchId: number, data: any) {
+    const database = await connect()
+    
+    console.log('[DB importProductionBatch] Looking for batch with id:', batchId, typeof batchId)
+    
+    // Try to find the batch with flexible ID matching
+    const batch = await database.collection('production_batches').findOne({ 
+      $or: [
+        { id: batchId },
+        { id: Number(batchId) },
+        { id: String(batchId) }
+      ]
+    })
+    
+    console.log('[DB importProductionBatch] Found batch:', batch ? 'YES' : 'NO', batch?.id, batch?.batchNumber)
+    
+    if (!batch) {
+      // Try to list all batches to debug
+      const allBatches = await database.collection('production_batches').find({}).limit(5).toArray()
+      console.log('[DB importProductionBatch] Available batches:', allBatches.map(b => ({ id: b.id, type: typeof b.id, batchNumber: b.batchNumber })))
+      throw new Error(`Production batch not found. Looking for ID: ${batchId} (${typeof batchId})`)
+    }
+
+    const quantityProduced = batch.quantityProduced || batch.quantity_produced || 0
+    const quantityRemaining = batch.quantity_remaining ?? quantityProduced
+    const rejectedUnits = data.rejected_units || 0
+    const acceptedUnits = data.accepted_units || 0
+
+    // Validate quantities
+    if (rejectedUnits + acceptedUnits > quantityRemaining) {
+      throw new Error(`Cannot import ${rejectedUnits + acceptedUnits} units. Only ${quantityRemaining} units remaining in batch.`)
+    }
+
+    // Update production batch: track rejected units and reduce remaining quantity
+    const updatedRejectedUnits = (batch.rejected_units || 0) + rejectedUnits
+    const updatedQuantityRemaining = quantityRemaining - rejectedUnits - acceptedUnits
+    
+    await database.collection('production_batches').updateOne(
+      { id: batchId },
+      { 
+        $set: { 
+          rejected_units: updatedRejectedUnits,
+          quantity_remaining: updatedQuantityRemaining,
+          updatedAt: nowISO()
+        }
+      }
+    )
+
+    // Create finished product inventory item
+    const inventoryId = await getNextSequence('inventoryId')
+    const productName = batch.productName || batch.product_name || 'Unknown Product'
+    const batchNumber = batch.batchNumber || batch.batch_number || `BATCH-${batchId}`
+    const costPerUnit = batch.costPerUnit || batch.cost_per_unit || 0
+    
+    const finishedProduct = {
+      id: inventoryId,
+      name: productName,
+      item_type: 'finished_product',
+      product_id: batch.productId || batch.product_id,
+      batch_id: batchId,
+      batch_number: batchNumber,
+      quantity: acceptedUnits,
+      current_stock: acceptedUnits,
+      unit_cost: costPerUnit,
+      selling_price: data.selling_price,
+      minimum_stock: 10,
+      supplier: 'Internal Production',
+      barcode: `${batchNumber}-READY-${Date.now()}`,
+      location: data.location || 'Main Warehouse',
+      notes: data.notes || `Imported from ${batchNumber}. Rejected units: ${rejectedUnits}`,
+      rejected_units: rejectedUnits,
+      production_date: batch.productionDate || batch.production_date,
+      import_date: nowISO(),
+      last_updated: nowISO(),
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    }
+    
+    const result = await database.collection('inventory').insertOne(finishedProduct)
+    
+    return { 
+      ...finishedProduct, 
+      _id: result.insertedId,
+      batch: {
+        id: batchId,
+        batch_number: batchNumber,
+        quantity_remaining: updatedQuantityRemaining,
+        rejected_units: updatedRejectedUnits
+      }
+    }
+  }
+
   static async getDistributions() {
-    await connect()
-    const coll = db!.collection("distributions")
-    const pipeline = [
-      { $sort: { distribution_date: -1 } },
-      { $lookup: { from: "products", localField: "product_id", foreignField: "id", as: "product" } },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
-      { $addFields: { product_name: "$product.name" } },
-      { $project: { product: 0 } },
-    ]
-    return await coll.aggregate(pipeline).toArray()
+    const database = await connect()
+    const distributions = await database.collection('distributions').find({}).toArray()
+    return distributions.map(d => ({ ...d, id: d._id.toString() }))
   }
 
-  static async createDistribution(distribution: any) {
-    await connect()
-    const coll = db!.collection("distributions")
-    const inventoryColl = db!.collection("inventory")
-    const finColl = db!.collection("financial_transactions")
-    const id = await getNextSequence("distributionId")
-    const doc = { id, ...distribution, created_at: nowISO(), updated_at: nowISO() }
-    await coll.insertOne(doc)
-    // Update inventory
-    await inventoryColl.updateOne({ product_id: distribution.product_id }, { $inc: { quantity: -distribution.quantity }, $set: { last_updated: nowISO() } })
-    // Record financial transaction
-    const totalValue = distribution.quantity * distribution.unit_price
-    await finColl.insertOne({ id: await getNextSequence("financialTransactionId"), transaction_type: "sale", reference_type: "distribution", reference_id: id, amount: totalValue, description: `Sale to ${distribution.recipient_name}`, transaction_date: distribution.distribution_date, created_at: nowISO() })
-    return doc
-  }
-
-  // Analytics
-  static async getInventorySummary() {
-    await connect()
-    // Reuse getInventory logic
-    return await this.getInventory()
-  }
-
-  static async getProductionProfitability() {
-    await connect()
-    const coll = db!.collection("production_batches")
-    const productsColl = db!.collection("products")
-    const batches = await coll.find().sort({ production_date: -1 }).toArray()
-    return await Promise.all(
-      batches.map(async (pb: any) => {
-        const p = await productsColl.findOne({ id: pb.product_id })
-        const costPerUnit = pb.quantity_produced ? pb.total_cost / pb.quantity_produced : 0
-        const potentialProfit = ((p?.unit_price ?? 0) - costPerUnit) * (pb.quantity_produced ?? 0)
-        return { ...pb, product_name: p?.name, cost_per_unit: costPerUnit, unit_price: p?.unit_price, potential_profit: potentialProfit }
-      }),
+  static async createDistribution(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('distributionId')
+    
+    const distribution = {
+      id,
+      inventory_item_id: data.inventory_item_id,
+      recipient_name: data.recipient_name,
+      recipient_contact: data.recipient_contact || '',
+      quantity: data.quantity,
+      unit_price: data.unit_price,
+      total_amount: data.quantity * data.unit_price,
+      distribution_date: data.distribution_date || nowISO(),
+      notes: data.notes || '',
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    }
+    
+    // Update inventory: decrease finished product quantity
+    await database.collection('inventory').updateOne(
+      { id: data.inventory_item_id, item_type: 'finished_product' },
+      { 
+        $inc: { quantity: -data.quantity },
+        $set: { updatedAt: nowISO() }
+      }
     )
+    
+    // Create financial transaction for revenue
+    await database.collection('financial_transactions').insertOne({
+      id: await getNextSequence('financialTransactionId'),
+      type: 'revenue',
+      amount: data.quantity * data.unit_price,
+      description: `Sale to ${data.recipient_name}`,
+      category: 'Sales',
+      distribution_id: id,
+      date: data.distribution_date || nowISO(),
+      createdAt: nowISO()
+    })
+    
+    const result = await database.collection('distributions').insertOne(distribution)
+    return { ...distribution, _id: result.insertedId }
   }
 
-  static async getDistributionPerformance() {
-    await connect()
-    const coll = db!.collection("distributions")
-    const productsColl = db!.collection("products")
-    const dists = await coll.find().sort({ distribution_date: -1 }).toArray()
-    return await Promise.all(
-      dists.map(async (d: any) => {
-        const p = await productsColl.findOne({ id: d.product_id })
-        const total_value = (d.quantity ?? 0) * (d.unit_price ?? 0)
-        const gross_profit = (d.unit_price ?? 0) - (p?.cost_price ?? 0)
-        const profit_margin_percent = p?.cost_price ? ((d.unit_price - p.cost_price) / p.cost_price) * 100 : 0
-        return { ...d, product_name: p?.name, total_value, cost_price: p?.cost_price, gross_profit: gross_profit * (d.quantity ?? 0), profit_margin_percent }
-      }),
-    )
+  static async getFinancialTransactions() {
+    const database = await connect()
+    const transactions = await database.collection('financial_transactions').find({}).toArray()
+    return transactions.map(t => ({ ...t, id: t._id.toString() }))
+  }
+
+  static async getFinancialSummary() {
+    const database = await connect()
+    
+    // Get all financial transactions
+    const transactions = await this.getFinancialTransactions()
+    
+    // Calculate revenue and expenses
+    const revenue = transactions
+      .filter((t: any) => t.type === 'revenue')
+      .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
+    
+    const expenses = transactions
+      .filter((t: any) => t.type === 'expense')
+      .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
+
+    // Calculate inventory value
+    const inventory = await this.getInventory()
+    const rawMaterialsValue = inventory
+      .filter((i: any) => i.item_type === 'raw_material')
+      .reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.unit_cost || 0)), 0)
+    
+    const finishedProductsValue = inventory
+      .filter((i: any) => i.item_type === 'finished_product')
+      .reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.production_cost_per_unit || 0)), 0)
+
+    // Calculate production costs
+    const productionBatches = await this.getProductionBatches()
+    const totalProductionCost = productionBatches
+      .reduce((sum: number, batch: any) => sum + (batch.totalCost || 0), 0)
+
+    return {
+      totalRevenue: revenue,
+      totalExpenses: expenses,
+      netProfit: revenue - expenses,
+      rawMaterialsInventoryValue: rawMaterialsValue,
+      finishedProductsInventoryValue: finishedProductsValue,
+      totalInventoryValue: rawMaterialsValue + finishedProductsValue,
+      totalProductionCost,
+      profitMargin: revenue > 0 ? ((revenue - expenses) / revenue * 100) : 0
+    }
   }
 
   static async getMonthlyFinancialSummary() {
-    await connect()
-    const coll = db!.collection("financial_transactions")
-    // Aggregate last 12 months grouped by month and transaction_type
-    const now = new Date()
-    const lastYear = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    const pipeline = [
-      { $match: { transaction_date: { $gte: lastYear.toISOString() } } },
-      { $addFields: { month: { $substr: ["$transaction_date", 0, 7] } } },
-      { $group: { _id: { month: "$month", transaction_type: "$transaction_type" }, transaction_count: { $sum: 1 }, total_amount: { $sum: "$amount" } } },
-      { $project: { month: "$_id.month", transaction_type: "$_id.transaction_type", transaction_count: 1, total_amount: 1, _id: 0 } },
-      { $sort: { month: -1, transaction_type: 1 } },
-    ]
-    return await coll.aggregate(pipeline).toArray()
+    const transactions = await this.getFinancialTransactions()
+    
+    const monthlyData = transactions.reduce((acc: any, transaction: any) => {
+      const date = new Date(transaction.createdAt || transaction.date)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      
+      if (!acc[monthKey]) {
+        acc[monthKey] = { revenue: 0, expenses: 0 }
+      }
+      
+      if (transaction.type === 'revenue') {
+        acc[monthKey].revenue += transaction.amount || 0
+      } else if (transaction.type === 'expense') {
+        acc[monthKey].expenses += transaction.amount || 0
+      }
+      
+      return acc
+    }, {})
+    
+    return Object.entries(monthlyData).map(([month, data]: [string, any]) => ({
+      month,
+      revenue: data.revenue,
+      expenses: data.expenses,
+      profit: data.revenue - data.expenses
+    }))
   }
 
   static async getTopPerformingProducts() {
-    await connect()
-    const productsColl = db!.collection("products")
-    const distColl = db!.collection("distributions")
-    const pipeline = [
-      { $group: { _id: "$product_id", total_sold: { $sum: "$quantity" }, total_revenue: { $sum: { $multiply: ["$quantity", "$unit_price"] } } } },
-      { $sort: { total_revenue: -1 } },
-      { $limit: 10 },
-    ]
-    const results = await distColl.aggregate(pipeline).toArray()
-    return await Promise.all(
-      results.map(async (r: any) => {
-        const p = await productsColl.findOne({ id: r._id })
-        const total_profit = (r.total_revenue ?? 0) - ((p?.cost_price ?? 0) * (r.total_sold ?? 0))
-        return { id: p?.id, product_name: p?.name, category: p?.category, total_sold: r.total_sold ?? 0, total_revenue: r.total_revenue ?? 0, total_profit }
-      }),
-    )
+    const distributions = await this.getDistributions()
+    
+    const productPerformance = distributions.reduce((acc: any, dist: any) => {
+      const productId = dist.productId
+      if (!acc[productId]) {
+        acc[productId] = {
+          productId,
+          productName: dist.productName || `Product ${productId}`,
+          totalQuantity: 0,
+          totalRevenue: 0
+        }
+      }
+      acc[productId].totalQuantity += dist.quantity || 0
+      acc[productId].totalRevenue += (dist.quantity || 0) * (dist.pricePerUnit || 0)
+      return acc
+    }, {})
+    
+    return Object.values(productPerformance)
+      .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 5)
   }
 
   static async getRawMaterialUsage() {
-    await connect()
-    const rmColl = db!.collection("raw_materials")
-    const pcColl = db!.collection("production_costs")
-    const usage = await rmColl.aggregate([
-      { $lookup: { from: "production_costs", localField: "id", foreignField: "raw_material_id", as: "costs" } },
-      { $addFields: { total_quantity_used: { $sum: "$costs.quantity" }, total_cost_used: { $sum: { $map: { input: "$costs", as: "c", in: { $multiply: ["$$c.quantity", "$$c.unit_cost"] } } } } } },
-      { $project: { id: 1, material_name: "$name", unit: 1, cost_per_unit: 1, stock_quantity: 1, total_quantity_used: 1, total_cost_used: 1 } },
-      { $sort: { total_cost_used: -1 } },
-    ]).toArray()
-    return usage
+    const batches = await this.getProductionBatches()
+    
+    const materialUsage = batches.reduce((acc: any, batch: any) => {
+      if (batch.rawMaterials) {
+        batch.rawMaterials.forEach((material: any) => {
+          if (!acc[material.materialId]) {
+            acc[material.materialId] = {
+              materialId: material.materialId,
+              materialName: material.materialName || `Material ${material.materialId}`,
+              totalUsed: 0
+            }
+          }
+          acc[material.materialId].totalUsed += material.quantityUsed || 0
+        })
+      }
+      return acc
+    }, {})
+    
+    return Object.values(materialUsage)
   }
 
-  // Financial
-  static async getFinancialTransactions(limit = 50) {
-    await connect()
-    const coll = db!.collection("financial_transactions")
-    return await coll.find().sort({ transaction_date: -1, created_at: -1 }).limit(limit).toArray()
-  }
-
-  static async getFinancialSummary(startDate?: string, endDate?: string) {
-    await connect()
-    const coll = db!.collection("financial_transactions")
-    const match: any = {}
-    if (startDate && endDate) {
-      match.transaction_date = { $gte: startDate, $lte: endDate }
+  static async getInventorySummary() {
+    const inventory = await this.getInventory()
+    const rawMaterials = inventory.filter((i: any) => i.item_type === 'raw_material')
+    const finishedProducts = inventory.filter((i: any) => i.item_type === 'finished_product')
+    
+    return {
+      rawMaterialsCount: rawMaterials.length,
+      finishedProductsCount: finishedProducts.length,
+      rawMaterialsValue: rawMaterials.reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.unit_cost || 0)), 0),
+      finishedProductsValue: finishedProducts.reduce((sum: number, i: any) => sum + ((i.quantity || 0) * (i.production_cost_per_unit || 0)), 0)
     }
-    const pipeline: any[] = []
-    if (Object.keys(match).length) pipeline.push({ $match: match })
-    pipeline.push({ $group: { _id: "$transaction_type", count: { $sum: 1 }, total_amount: { $sum: "$amount" }, average_amount: { $avg: "$amount" } } })
-    pipeline.push({ $project: { transaction_type: "$_id", count: 1, total_amount: 1, average_amount: 1, _id: 0 } })
-    pipeline.push({ $sort: { total_amount: -1 } })
-    return await coll.aggregate(pipeline).toArray()
+  }
+
+  static async getDistributionPerformance() {
+    const distributions = await this.getDistributions()
+    const totalSales = distributions.reduce((sum: number, d: any) => sum + (d.total_amount || 0), 0)
+    const totalQuantity = distributions.reduce((sum: number, d: any) => sum + (d.quantity || 0), 0)
+    
+    return {
+      totalSales,
+      totalQuantity,
+      averageOrderValue: totalQuantity > 0 ? totalSales / totalQuantity : 0,
+      totalOrders: distributions.length
+    }
+  }
+
+  static async getProductionProfitability() {
+    const batches = await this.getProductionBatches()
+    const distributions = await this.getDistributions()
+    
+    // Calculate total production cost
+    const totalProductionCost = batches.reduce((sum: number, batch: any) => sum + (batch.totalCost || 0), 0)
+    
+    // Calculate total revenue from sales
+    const totalRevenue = distributions.reduce((sum: number, d: any) => sum + (d.total_amount || 0), 0)
+    
+    return {
+      totalProductionCost,
+      totalRevenue,
+      grossProfit: totalRevenue - totalProductionCost,
+      profitMargin: totalRevenue > 0 ? ((totalRevenue - totalProductionCost) / totalRevenue * 100) : 0
+    }
   }
 }
 

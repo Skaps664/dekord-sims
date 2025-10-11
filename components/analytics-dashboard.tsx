@@ -36,8 +36,10 @@ import { formatCurrency } from "@/lib/api-helpers"
 
 interface AnalyticsData {
   inventory: any[]
-  distributions: any[]
-  production: any[]
+  distributions: any
+  distributionsList?: any[]
+  production: any
+  productionList?: any[]
   topProducts: any[]
   financial: any[]
 }
@@ -53,13 +55,28 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
   const fetchAnalytics = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/analytics/overview")
-      const result = await response.json()
+      const [analyticsRes, distributionsRes, productionRes] = await Promise.all([
+        fetch("/api/analytics/overview"),
+        fetch("/api/distributions"),
+        fetch("/api/production-batches")
+      ])
+      
+      const [analyticsResult, distributionsResult, productionResult] = await Promise.all([
+        analyticsRes.json(),
+        distributionsRes.json(),
+        productionRes.json()
+      ])
 
-      if (result.success) {
-        setAnalyticsData(result.data)
+      if (analyticsResult.success) {
+        // Merge the analytics data with the actual distributions and production arrays
+        const enrichedData = {
+          ...analyticsResult.data,
+          distributionsList: distributionsResult.success ? distributionsResult.data : [],
+          productionList: productionResult.success ? productionResult.data : []
+        }
+        setAnalyticsData(enrichedData)
       } else {
-        console.error("Failed to fetch analytics:", result.error)
+        console.error("Failed to fetch analytics:", analyticsResult.error)
       }
     } catch (error) {
       console.error("Error fetching analytics:", error)
@@ -74,10 +91,10 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
 
   // Calculate seller analytics from distribution data
   const sellerAnalytics = useMemo(() => {
-    if (!analyticsData?.distributions) return []
+    if (!analyticsData?.distributionsList || !Array.isArray(analyticsData.distributionsList)) return []
 
     const sellerMap = new Map()
-    analyticsData.distributions.forEach((dist: any) => {
+    analyticsData.distributionsList.forEach((dist: any) => {
       const key = dist.recipient_name
       if (!sellerMap.has(key)) {
         sellerMap.set(key, {
@@ -91,9 +108,12 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
       }
 
       const seller = sellerMap.get(key)
-      seller.totalSales += dist.total_value
-      seller.totalProfit += dist.gross_profit
-      seller.totalQuantity += dist.quantity
+      const totalValue = (dist.total_amount || dist.total_value || (dist.unit_price * dist.quantity)) || 0
+      const grossProfit = dist.gross_profit || 0
+      
+      seller.totalSales += totalValue
+      seller.totalProfit += grossProfit
+      seller.totalQuantity += dist.quantity || 0
       seller.orderCount += 1
     })
 
@@ -102,32 +122,45 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
 
   // Monthly trend data
   const monthlyTrends = useMemo(() => {
-    if (!analyticsData?.distributions || !analyticsData?.production) return []
+    if (!analyticsData?.distributionsList && !analyticsData?.productionList) return []
 
     const monthMap = new Map()
 
     // Process distributions
-    analyticsData.distributions.forEach((dist: any) => {
-      const month = new Date(dist.distribution_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
-      if (!monthMap.has(month)) {
-        monthMap.set(month, { month, sales: 0, profit: 0, orders: 0, production: 0, productionCost: 0 })
-      }
-      const monthData = monthMap.get(month)
-      monthData.sales += dist.total_value
-      monthData.profit += dist.gross_profit
-      monthData.orders += 1
-    })
+    if (Array.isArray(analyticsData?.distributionsList)) {
+      analyticsData.distributionsList.forEach((dist: any) => {
+        const dateStr = dist.distribution_date || dist.distributionDate
+        if (!dateStr) return
+        
+        const month = new Date(dateStr).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+        if (!monthMap.has(month)) {
+          monthMap.set(month, { month, sales: 0, profit: 0, orders: 0, production: 0, productionCost: 0 })
+        }
+        const monthData = monthMap.get(month)
+        const totalValue = dist.total_amount || dist.total_value || (dist.unit_price * dist.quantity) || 0
+        const grossProfit = dist.gross_profit || 0
+        
+        monthData.sales += totalValue
+        monthData.profit += grossProfit
+        monthData.orders += 1
+      })
+    }
 
     // Process production
-    analyticsData.production.forEach((prod: any) => {
-      const month = new Date(prod.production_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
-      if (!monthMap.has(month)) {
-        monthMap.set(month, { month, sales: 0, profit: 0, orders: 0, production: 0, productionCost: 0 })
-      }
-      const monthData = monthMap.get(month)
-      monthData.production += prod.quantity_produced
-      monthData.productionCost += prod.total_cost
-    })
+    if (Array.isArray(analyticsData?.productionList)) {
+      analyticsData.productionList.forEach((prod: any) => {
+        const dateStr = prod.production_date || prod.productionDate
+        if (!dateStr) return
+        
+        const month = new Date(dateStr).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+        if (!monthMap.has(month)) {
+          monthMap.set(month, { month, sales: 0, profit: 0, orders: 0, production: 0, productionCost: 0 })
+        }
+        const monthData = monthMap.get(month)
+        monthData.production += prod.quantity_produced || prod.quantityProduced || 0
+        monthData.productionCost += prod.total_cost || prod.totalCost || 0
+      })
+    }
 
     return Array.from(monthMap.values()).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
   }, [analyticsData])
@@ -148,9 +181,26 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
   const totalStats = useMemo(() => {
     if (!analyticsData) return { totalSellers: 0, totalSales: 0, totalProfit: 0, totalOrders: 0, avgOrderValue: 0 }
 
-    const totalSales = analyticsData.distributions.reduce((sum: number, d: any) => sum + d.total_value, 0)
-    const totalProfit = analyticsData.distributions.reduce((sum: number, d: any) => sum + d.gross_profit, 0)
-    const totalOrders = analyticsData.distributions.length
+    // Use distributionsList if available, otherwise use the summary data from distributions object
+    const distributionsList = analyticsData.distributionsList || []
+    
+    let totalSales = 0
+    let totalProfit = 0
+    let totalOrders = distributionsList.length
+    
+    if (Array.isArray(distributionsList) && distributionsList.length > 0) {
+      totalSales = distributionsList.reduce((sum: number, d: any) => {
+        const value = d.total_amount || d.total_value || (d.unit_price * d.quantity) || 0
+        return sum + value
+      }, 0)
+      totalProfit = distributionsList.reduce((sum: number, d: any) => {
+        return sum + (d.gross_profit || 0)
+      }, 0)
+    } else if (analyticsData.distributions) {
+      // Fallback to summary data
+      totalSales = analyticsData.distributions.totalSales || 0
+      totalOrders = analyticsData.distributions.totalOrders || 0
+    }
 
     return {
       totalSellers: sellerAnalytics.length,
@@ -423,7 +473,7 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={analyticsData.production.slice(0, 10)}>
+                  <BarChart data={(analyticsData.productionList || []).slice(0, 10)}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="batch_number" angle={-45} textAnchor="end" height={100} fontSize={12} />
                     <YAxis />
@@ -441,7 +491,7 @@ export function AnalyticsDashboard({ onBack }: AnalyticsDashboardProps) {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={analyticsData.production.slice(0, 10)}>
+                  <BarChart data={(analyticsData.productionList || []).slice(0, 10)}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="product_name" angle={-45} textAnchor="end" height={100} fontSize={12} />
                     <YAxis />

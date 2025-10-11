@@ -27,6 +27,7 @@ import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog"
 import { ProductionAccounting } from "@/components/production-accounting"
 import { ProductsManagement } from "@/components/products-management" // Added ProductsManagement component
 import { AnalyticsDashboard } from "@/components/analytics-dashboard" // Added AnalyticsDashboard component
+import { ImportProductionDialog } from "@/components/import-production-dialog" // Added ImportProductionDialog component
 
 interface Product {
   id: string
@@ -43,31 +44,31 @@ interface Product {
 interface InventoryItem {
   id: string
   name: string
-  sku: string
-  category: string
-  inventoryType: "finished" | "raw"
+  item_type: "raw_material" | "finished_product"
   quantity: number
-  minStock: number
-  unitCost: number
-  sellingPrice?: number
-  supplier: string
-  lastUpdated: string
+  unit_cost: number
+  selling_price?: number
+  location: string
+  notes: string
+  supplier?: string
   barcode?: string
-  batchId?: string
-  batchName?: string
-  productionDate?: string
-  productId?: string // Added product linking
+  current_stock: number
+  minimum_stock?: number
+  last_updated?: string
 }
 
 interface Distribution {
-  id: string
-  recipient: string
-  recipientType: "distributor" | "shop_keeper" | "individual" | "friend_family" | "influencer_marketing"
-  location: string
-  personName: string
-  phoneNumber: string
-  cnic: string
-  items: {
+  id: string | number
+  inventory_item_id?: number
+  recipient_name?: string
+  recipient_contact?: string
+  recipient?: string
+  recipientType?: "distributor" | "shop_keeper" | "individual" | "friend_family" | "influencer_marketing"
+  location?: string
+  personName?: string
+  phoneNumber?: string
+  cnic?: string
+  items?: {
     itemId: string
     itemName: string
     quantity: number
@@ -76,34 +77,51 @@ interface Distribution {
     batchId?: string
     batchName?: string
   }[]
-  totalValue: number
-  totalProfit: number
-  date: string
-  status: "pending" | "completed" | "cancelled"
-  month: string
+  quantity?: number
+  unit_price?: number
+  total_amount?: number
+  totalValue?: number
+  totalProfit?: number
+  gross_profit?: number
+  date?: string
+  distribution_date?: string
+  status?: "pending" | "completed" | "cancelled"
+  month?: string
+  notes?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 interface ProductionBatch {
-  id: string
-  batchName: string
-  productId: string // Changed from productName to productId for proper linking
-  productName: string
-  unitsProduced: number
-  productionDate: string
-  month: string
-  rawMaterials: { itemId: string; itemName: string; quantity: number; unitCost: number }[]
-  fixedCosts: {
+  id: string | number
+  batchName?: string
+  batch_number?: string
+  productId?: string | number
+  product_id?: string | number
+  productName?: string
+  product_name?: string
+  unitsProduced?: number
+  quantityProduced?: number
+  quantity_produced?: number
+  quantity_remaining?: number
+  rejected_units?: number
+  productionDate?: string
+  production_date?: string
+  month?: string
+  rawMaterials?: { itemId: string; itemName: string; quantity: number; unitCost: number }[]
+  fixedCosts?: {
     labor: number
     electricity: number
     packing: number
     advertising: number
   }
-  miscellaneousCosts: { description: string; amount: number }[]
-  totalRawMaterialCost: number
-  totalFixedCosts: number
-  totalMiscellaneousCosts: number
-  totalCost: number
-  costPerUnit: number
+  miscellaneousCosts?: { description: string; amount: number }[]
+  totalRawMaterialCost?: number
+  totalFixedCosts?: number
+  totalMiscellaneousCosts?: number
+  totalCost?: number
+  costPerUnit?: number
+  cost_per_unit?: number
 }
 
 export default function Dashboard() {
@@ -113,6 +131,7 @@ export default function Dashboard() {
   const [products, setProducts] = useState<Product[]>([])
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showScannerDialog, setShowScannerDialog] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7))
   const [showLeaderboard, setShowLeaderboard] = useState(false) // Added state to control leaderboard view
   const [loading, setLoading] = useState(true)
@@ -127,19 +146,21 @@ export default function Dashboard() {
       setLoading(true)
       setError(null)
 
-      const [inventoryRes, productsRes, distributionsRes] = await Promise.all([
+      const [inventoryRes, productsRes, distributionsRes, productionBatchesRes] = await Promise.all([
         fetch("/api/inventory"),
         fetch("/api/products"),
         fetch("/api/distributions"),
+        fetch("/api/production-batches"),
       ])
 
-      if (!inventoryRes.ok || !productsRes.ok || !distributionsRes.ok) {
+      if (!inventoryRes.ok || !productsRes.ok || !distributionsRes.ok || !productionBatchesRes.ok) {
         throw new Error("Failed to load data from database")
       }
 
       const inventoryData = await inventoryRes.json()
       const productsData = await productsRes.json()
       const distributionsData = await distributionsRes.json()
+      const productionBatchesData = await productionBatchesRes.json()
 
       if (inventoryData.requiresSetup || productsData.requiresSetup || distributionsData.requiresSetup) {
         setError("Database setup required. Please run the setup scripts first.")
@@ -150,6 +171,7 @@ export default function Dashboard() {
       setInventory(inventoryData.data || [])
       setProducts(productsData.data || [])
       setDistributions(distributionsData.data || [])
+      setProductionBatches(productionBatchesData.data || [])
     } catch (error) {
       console.error("Error loading data:", error)
       setError("Failed to connect to database. Please check your database connection and try again.")
@@ -158,13 +180,38 @@ export default function Dashboard() {
     }
   }
 
-  const filteredDistributions = distributions.filter((d) => d.month === selectedMonth)
+  const filteredDistributions = distributions.filter((d) => {
+    if (!d.distribution_date) return false
+    const distributionMonth = new Date(d.distribution_date).toISOString().slice(0, 7)
+    return distributionMonth === selectedMonth
+  })
+
+  const filteredBatches = productionBatches.filter((batch) => {
+    const batchDate = batch.productionDate || batch.production_date
+    if (!batchDate) return false
+    const batchMonth = new Date(batchDate).toISOString().slice(0, 7)
+    return batchMonth === selectedMonth
+  })
 
   // Calculate dashboard metrics
-  const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0)
-  const lowStockItems = inventory.filter((item) => item.quantity <= item.minStock)
-  const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.unitCost, 0)
+  const totalProducts = products.length // Total number of product types
+  const lowStockItems = inventory.filter((item) => item.quantity <= (item.minimum_stock || 0))
+  const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0)
+  
+  // Calculate monthly distribution metrics
+  const monthlyDistributionValue = filteredDistributions.reduce((sum, d) => sum + (d.total_amount || d.totalValue || 0), 0)
+  const monthlyDistributionProfit = filteredDistributions.reduce((sum, d) => sum + (d.gross_profit || 0), 0)
+  const totalBatchesProduced = filteredBatches.length
+  const completedOrders = filteredDistributions.filter((d) => d.status === "completed" || !d.status).length
   const pendingDistributions = filteredDistributions.filter((d) => d.status === "pending").length
+  const avgOrderValue = filteredDistributions.length > 0 
+    ? monthlyDistributionValue / filteredDistributions.length 
+    : 0
+
+  // Production success metrics
+  const totalProduced = filteredBatches.reduce((sum, batch) => sum + (batch.quantityProduced || batch.quantity_produced || 0), 0)
+  const totalRejected = filteredBatches.reduce((sum, batch) => sum + (batch.rejected_units || 0), 0)
+  const successRate = totalProduced > 0 ? (((totalProduced - totalRejected) / totalProduced) * 100).toFixed(1) : "0"
 
   const addInventoryItem = async (item: Omit<InventoryItem, "id" | "lastUpdated">) => {
     try {
@@ -210,61 +257,31 @@ export default function Dashboard() {
     setShowScannerDialog(false)
   }
 
-  const handleBatchCreated = (batch: ProductionBatch) => {
-    // Add batch to production batches
-    const updatedBatches = [...productionBatches, batch]
-    setProductionBatches(updatedBatches)
-    localStorage.setItem("productionBatches", JSON.stringify(updatedBatches))
-
-    // Deduct raw materials from inventory
-    const updatedInventory = inventory.map((item) => {
-      const usedMaterial = batch.rawMaterials.find((rm) => rm.itemId === item.id)
-      if (usedMaterial && item.inventoryType === "raw") {
-        return {
-          ...item,
-          quantity: Math.max(0, item.quantity - usedMaterial.quantity),
-          lastUpdated: new Date().toISOString(),
-        }
-      }
-      return item
-    })
-
-    // Add finished products to inventory
-    const finishedProduct: InventoryItem = {
-      id: `batch-${batch.id}-product`,
-      name: batch.productName,
-      sku: `BATCH-${batch.batchName}`,
-      category: "Finished Products",
-      inventoryType: "finished",
-      quantity: batch.unitsProduced,
-      minStock: 10,
-      unitCost: batch.costPerUnit,
-      sellingPrice: batch.costPerUnit * 1.3,
-      supplier: "Internal Production",
-      lastUpdated: new Date().toISOString(),
-      batchId: batch.id,
-      batchName: batch.batchName,
-      productionDate: batch.productionDate,
-      productId: batch.productId,
-    }
-
-    const finalInventory = [...updatedInventory, finishedProduct]
-    setInventory(finalInventory)
-    localStorage.setItem("inventory", JSON.stringify(finalInventory))
+  const handleBatchCreated = async (batch: ProductionBatch) => {
+    // Reload all data from API after batch creation
+    // The production batch API should have already saved the batch
+    // and the component should have already updated raw material inventory
+    await loadData()
   }
 
   const handleDistributionCreated = (distribution: Distribution) => {
+    // Only process if items exist (legacy format)
+    if (!distribution.items || distribution.items.length === 0) {
+      setDistributions([...distributions, distribution])
+      return
+    }
+    
     // Calculate profit for each item
     const distributionWithProfit = {
       ...distribution,
       items: distribution.items.map((item) => {
         const inventoryItem = inventory.find((inv) => inv.id === item.itemId)
-        const profit = item.sellingPrice - (inventoryItem?.unitCost || 0)
+        const profit = item.sellingPrice - (inventoryItem?.unit_cost || 0)
         return { ...item, profit }
       }),
       totalProfit: distribution.items.reduce((sum, item) => {
         const inventoryItem = inventory.find((inv) => inv.id === item.itemId)
-        return sum + (item.sellingPrice - (inventoryItem?.unitCost || 0)) * item.quantity
+        return sum + (item.sellingPrice - (inventoryItem?.unit_cost || 0)) * item.quantity
       }, 0),
     }
 
@@ -275,7 +292,7 @@ export default function Dashboard() {
 
     // Deduct items from inventory
     const updatedInventory = inventory.map((item) => {
-      const distributedItem = distribution.items.find((di) => di.itemId === item.id)
+      const distributedItem = distribution.items?.find((di) => di.itemId === item.id)
       if (distributedItem) {
         return {
           ...item,
@@ -290,23 +307,40 @@ export default function Dashboard() {
     localStorage.setItem("inventory", JSON.stringify(updatedInventory))
   }
 
-  const finishedProducts = inventory.filter((item) => item.inventoryType === "finished")
-  const rawMaterials = inventory.filter((item) => item.inventoryType === "raw")
+  const finishedProducts = inventory.filter((item) => item.item_type === "finished_product")
+  const rawMaterials = inventory.filter((item) => item.item_type === "raw_material")
 
   const addProduct = async (product: Omit<Product, "id" | "createdDate">) => {
     try {
+      // Ensure numeric fields are numbers
+      const payload = {
+        ...product,
+        unit_price: Number((product as any).unit_price),
+        cost_price: Number((product as any).cost_price),
+      }
+
       const response = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(product),
+        body: JSON.stringify(payload),
       })
 
-      if (!response.ok) throw new Error("Failed to add product")
+      if (!response.ok) {
+        let body: any = null
+        try {
+          body = await response.json()
+        } catch (e) {
+          // ignore
+        }
+        console.error("Create product failed", response.status, body)
+        throw new Error(body?.error || "Failed to add product")
+      }
 
       const result = await response.json()
       setProducts((prev) => [...prev, result.data])
     } catch (error) {
       console.error("Error adding product:", error)
+      setError("Failed to add product. See console for details.")
     }
   }
 
@@ -320,7 +354,8 @@ export default function Dashboard() {
 
       if (response.ok) {
         const result = await response.json()
-        setProducts((prev) => prev.map((p) => (p.id === productId ? result.data : p)))
+        // Compare string versions to handle both string and number IDs
+        setProducts((prev) => prev.map((p) => (String(p.id) === String(productId) ? result.data : p)))
       }
     } catch (error) {
       console.error("Error updating product:", error)
@@ -328,16 +363,35 @@ export default function Dashboard() {
   }
 
   const deleteProduct = async (productId: string) => {
+    console.log('[Product Delete] Attempting to delete product:', productId, typeof productId)
+    
     try {
       const response = await fetch(`/api/products/${productId}`, {
         method: "DELETE",
       })
 
+      console.log('[Product Delete] Response status:', response.status, response.ok)
+
       if (response.ok) {
-        setProducts((prev) => prev.filter((p) => p.id !== productId))
+        const result = await response.json()
+        console.log('[Product Delete] API result:', result)
+        
+        if (result.success) {
+          // Filter by comparing string versions to handle both string and number ids
+          setProducts((prev) => prev.filter((p) => String(p.id) !== String(productId)))
+          console.log("Product deleted successfully")
+        } else {
+          console.error("Failed to delete product:", result.error)
+          alert("Failed to delete product: " + result.error)
+        }
+      } else {
+        const errorText = await response.text()
+        console.error("Delete request failed:", response.status, response.statusText, errorText)
+        alert("Failed to delete product. Please try again.")
       }
     } catch (error) {
       console.error("Error deleting product:", error)
+      alert("Error deleting product. Please check your connection.")
     }
   }
 
@@ -416,14 +470,15 @@ export default function Dashboard() {
           <AnalyticsDashboard open={true} onOpenChange={() => {}} distributions={distributions} />
         ) : (
           <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-8">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="products">Products</TabsTrigger>
+              <TabsTrigger value="raw-materials">Raw Materials</TabsTrigger>
               <TabsTrigger value="production">Production</TabsTrigger>
-              <TabsTrigger value="inventory">Inventory</TabsTrigger>
+              <TabsTrigger value="ready">Ready</TabsTrigger>
               <TabsTrigger value="distributions">Distributions</TabsTrigger>
               <TabsTrigger value="financial">Financial</TabsTrigger>
-              <TabsTrigger value="reports">Monthly Reports</TabsTrigger>
+              <TabsTrigger value="reports">Reports</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -437,12 +492,12 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Total Items</CardTitle>
+                    <CardTitle className="text-sm font-medium text-slate-600">Total Products</CardTitle>
                     <Package className="h-4 w-4 text-blue-600" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">{totalItems.toLocaleString()}</div>
-                    <p className="text-xs text-slate-500">Units in stock</p>
+                    <div className="text-2xl font-bold text-slate-900">{totalProducts}</div>
+                    <p className="text-xs text-slate-500">Product types</p>
                   </CardContent>
                 </Card>
 
@@ -464,22 +519,20 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-slate-900">
-                      ${filteredDistributions.reduce((sum, d) => sum + d.totalValue, 0).toLocaleString()}
+                      ${monthlyDistributionValue.toLocaleString()}
                     </div>
-                    <p className="text-xs text-slate-500">This month's value</p>
+                    <p className="text-xs text-slate-500">Total distributed value</p>
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-purple-600" />
-                      Pending Orders
-                    </CardTitle>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Production Batches</CardTitle>
+                    <Factory className="h-4 w-4 text-purple-600" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">{pendingDistributions}</div>
-                    <p className="text-xs text-slate-500">Awaiting fulfillment</p>
+                    <div className="text-2xl font-bold text-slate-900">{totalBatchesProduced}</div>
+                    <p className="text-xs text-slate-500">Batches this month</p>
                   </CardContent>
                 </Card>
               </div>
@@ -488,41 +541,35 @@ export default function Dashboard() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-blue-600" />
-                      Inventory Distribution
+                      <Package className="h-5 w-5 text-blue-600" />
+                      Ready Products Inventory
                     </CardTitle>
-                    <CardDescription>Stock levels by category</CardDescription>
+                    <CardDescription>Stock levels by product</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Finished Products</span>
-                        <span className="text-sm text-slate-600">
-                          {finishedProducts.reduce((sum, item) => sum + item.quantity, 0)} units
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2">
-                        <div
-                          className="bg-green-600 h-2 rounded-full"
-                          style={{
-                            width: `${(finishedProducts.reduce((sum, item) => sum + item.quantity, 0) / totalItems) * 100}%`,
-                          }}
-                        ></div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Raw Materials</span>
-                        <span className="text-sm text-slate-600">
-                          {rawMaterials.reduce((sum, item) => sum + item.quantity, 0)} units
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{
-                            width: `${(rawMaterials.reduce((sum, item) => sum + item.quantity, 0) / totalItems) * 100}%`,
-                          }}
-                        ></div>
-                      </div>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                      {finishedProducts.length === 0 ? (
+                        <p className="text-sm text-slate-500 text-center py-4">No ready products yet</p>
+                      ) : (
+                        finishedProducts.map((item, index) => {
+                          const totalInventory = finishedProducts.reduce((sum, p) => sum + p.quantity, 0)
+                          const percentage = totalInventory > 0 ? (item.quantity / totalInventory) * 100 : 0
+                          return (
+                            <div key={index} className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">{item.name}</span>
+                                <span className="text-sm text-slate-600">{item.quantity} units</span>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-2">
+                                <div
+                                  className="bg-green-600 h-2 rounded-full transition-all"
+                                  style={{ width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -538,25 +585,17 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Total Inventory Value</span>
-                        <span className="text-lg font-bold text-green-600">${totalValue.toLocaleString()}</span>
+                        <span className="text-sm font-medium">Total Batches Produced</span>
+                        <span className="text-lg font-bold text-blue-600">{totalBatchesProduced}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Completed Orders</span>
-                        <span className="text-lg font-bold text-blue-600">
-                          {filteredDistributions.filter((d) => d.status === "completed").length}
-                        </span>
+                        <span className="text-sm font-medium">Total Distributions</span>
+                        <span className="text-lg font-bold text-purple-600">{filteredDistributions.length}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Average Order Value</span>
-                        <span className="text-lg font-bold text-purple-600">
-                          $
-                          {filteredDistributions.length > 0
-                            ? (
-                                filteredDistributions.reduce((sum, d) => sum + d.totalValue, 0) /
-                                filteredDistributions.length
-                              ).toLocaleString()
-                            : "0"}
+                        <span className="text-sm font-medium">Total Profit</span>
+                        <span className="text-lg font-bold text-green-600">
+                          ${monthlyDistributionProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </div>
@@ -571,15 +610,29 @@ export default function Dashboard() {
                       <ShoppingCart className="h-5 w-5 text-green-600" />
                       Finished Products
                     </CardTitle>
-                    <CardDescription>Ready-to-sell cable products</CardDescription>
+                    <CardDescription>Ready-to-sell products</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <InventoryTable
-                      inventory={finishedProducts}
-                      setInventory={setInventory}
-                      showTypeFilter={false}
-                      compact={true}
-                    />
+                    {finishedProducts.length === 0 ? (
+                      <p className="text-sm text-slate-500 text-center py-8">
+                        No finished products yet. Import from production batches to add products here.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {finishedProducts.map((item, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <div>
+                              <p className="font-medium text-sm">{item.name}</p>
+                              <p className="text-xs text-slate-500">{item.barcode}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-green-600">{item.quantity} units</p>
+                              <p className="text-xs text-slate-500">${item.selling_price?.toFixed(2) || "0.00"}/unit</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -587,17 +640,61 @@ export default function Dashboard() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Factory className="h-5 w-5 text-blue-600" />
-                      Raw Materials
+                      Production Batches
                     </CardTitle>
-                    <CardDescription>Manufacturing components and supplies</CardDescription>
+                    <CardDescription>Quality control and success metrics</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <InventoryTable
-                      inventory={rawMaterials}
-                      setInventory={setInventory}
-                      showTypeFilter={false}
-                      inventoryType="raw"
-                    />
+                    {filteredBatches.length === 0 ? (
+                      <p className="text-sm text-slate-500 text-center py-8">
+                        No production batches this month
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div className="p-3 bg-blue-50 rounded-lg">
+                            <p className="text-2xl font-bold text-blue-600">{totalBatchesProduced}</p>
+                            <p className="text-xs text-slate-600">Total Batches</p>
+                          </div>
+                          <div className="p-3 bg-green-50 rounded-lg">
+                            <p className="text-2xl font-bold text-green-600">{totalProduced - totalRejected}</p>
+                            <p className="text-xs text-slate-600">Accepted Units</p>
+                          </div>
+                          <div className="p-3 bg-amber-50 rounded-lg">
+                            <p className="text-2xl font-bold text-amber-600">{totalRejected}</p>
+                            <p className="text-xs text-slate-600">Rejected Units</p>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium">Success Rate</span>
+                            <span className="text-lg font-bold text-green-600">{successRate}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full h-3">
+                            <div
+                              className="bg-green-600 h-3 rounded-full transition-all"
+                              style={{ width: `${successRate}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {filteredBatches.slice(0, 5).map((batch, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 border-l-4 border-blue-500 bg-slate-50 rounded">
+                              <div>
+                                <p className="text-sm font-medium">{(batch as any).productName || (batch as any).product_name}</p>
+                                <p className="text-xs text-slate-500">{(batch as any).batchNumber || (batch as any).batch_number}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-bold">{(batch as any).quantityProduced || (batch as any).quantity_produced} units</p>
+                                <p className="text-xs text-slate-500">
+                                  {new Date((batch as any).productionDate || (batch as any).production_date).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -612,56 +709,69 @@ export default function Dashboard() {
               />
             </TabsContent>
 
-            <TabsContent value="inventory">
+            <TabsContent value="raw-materials">
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-semibold text-slate-900">Inventory Management</h2>
-                    <p className="text-slate-600">Manage your finished products and raw materials</p>
+                    <h2 className="text-xl font-semibold text-slate-900">Raw Materials Management</h2>
+                    <p className="text-slate-600">Manage raw materials and components for production</p>
                   </div>
                   <Button onClick={() => setShowAddDialog(true)} className="bg-blue-600 hover:bg-blue-700">
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Item
+                    Add Raw Material
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <ShoppingCart className="h-5 w-5 text-green-600" />
-                        Finished Products
-                      </CardTitle>
-                      <CardDescription>Ready-to-sell cable products with cost and pricing</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <InventoryTable
-                        inventory={finishedProducts}
-                        setInventory={setInventory}
-                        showTypeFilter={false}
-                        inventoryType="finished"
-                      />
-                    </CardContent>
-                  </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Factory className="h-5 w-5 text-blue-600" />
+                      Raw Materials Inventory
+                    </CardTitle>
+                    <CardDescription>Manufacturing components and supplies with pricing details</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <InventoryTable
+                      inventory={rawMaterials}
+                      setInventory={setInventory}
+                      showTypeFilter={false}
+                      inventoryType="raw"
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Factory className="h-5 w-5 text-blue-600" />
-                        Raw Materials
-                      </CardTitle>
-                      <CardDescription>Manufacturing components and supplies with pricing details</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <InventoryTable
-                        inventory={rawMaterials}
-                        setInventory={setInventory}
-                        showTypeFilter={false}
-                        inventoryType="raw"
-                      />
-                    </CardContent>
-                  </Card>
+            <TabsContent value="ready">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-900">Ready Products</h2>
+                    <p className="text-slate-600">Finished products ready for distribution</p>
+                  </div>
+                  <Button onClick={() => setShowImportDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+                    <Package className="w-4 h-4 mr-2" />
+                    Import from Production
+                  </Button>
                 </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ShoppingCart className="h-5 w-5 text-green-600" />
+                      Finished Products Ready for Distribution
+                    </CardTitle>
+                    <CardDescription>Products completed from production batches and ready to sell</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <InventoryTable
+                      inventory={finishedProducts}
+                      setInventory={setInventory}
+                      showTypeFilter={false}
+                      inventoryType="finished"
+                    />
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
 
@@ -722,7 +832,7 @@ export default function Dashboard() {
       <AddItemDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
-        onAddItem={addInventoryItem}
+        onSuccess={loadData} // Reload data after adding item
         products={products} // Pass products to add item dialog
         productionBatches={productionBatches} // Pass production batches to add item dialog
       />
@@ -730,6 +840,11 @@ export default function Dashboard() {
         open={showScannerDialog}
         onOpenChange={setShowScannerDialog}
         onBarcodeScanned={handleBarcodeScanned}
+      />
+      <ImportProductionDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onSuccess={loadData} // Reload data after importing production
       />
     </div>
   )

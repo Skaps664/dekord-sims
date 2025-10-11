@@ -17,7 +17,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Factory, Calculator, DollarSign, Package, X, Loader2 } from "lucide-react"
+import { Plus, Factory, Calculator, DollarSign, Package, X, Loader2, Pencil } from "lucide-react"
 import { formatCurrency, formatNumber, formatDate } from "@/lib/api-helpers"
 
 interface Product {
@@ -34,21 +34,28 @@ interface RawMaterial {
   id: number
   name: string
   unit: string
-  cost_per_unit: number
+  unit_cost: number
   supplier: string
-  stock_quantity: number
+  quantity: number
   minimum_stock: number
 }
 
 interface ProductionBatch {
   id: number
-  batch_number: string
-  product_id: number
-  product_name: string
-  quantity_produced: number
-  production_date: string
-  total_cost: number
-  cost_per_unit: number
+  batch_number?: string
+  batchNumber?: string
+  product_id?: number
+  product_name?: string
+  productName?: string
+  quantity_produced?: number
+  quantityProduced?: number
+  production_date?: string
+  productionDate?: string
+  productionDateString?: string
+  total_cost?: number
+  totalCost?: number
+  cost_per_unit?: number
+  costPerUnit?: number
   notes?: string
 }
 
@@ -67,6 +74,7 @@ interface ProductionAccountingProps {
 
 export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAccountingProps) {
   const [showAddBatchDialog, setShowAddBatchDialog] = useState(false)
+  const [editingBatchId, setEditingBatchId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
@@ -76,6 +84,7 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
   const [newBatch, setNewBatch] = useState({
     batch_number: "",
     product_id: "",
+    productName: "",
     quantity_produced: 0,
     production_date: formatDate(new Date()),
     notes: "",
@@ -133,30 +142,28 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
 
   // Filter batches by selected month
   const filteredBatches = productionBatches.filter((batch) => {
-    const batchDate = new Date(batch.production_date)
+    // Support both snake_case and camelCase date fields returned from backend
+    const dateStr = batch.production_date || batch.productionDate || batch.productionDateString || null
+    const batchDate = dateStr ? new Date(dateStr) : new Date('')
     const selectedDate = new Date(selectedMonth + "-01")
-    return batchDate.getFullYear() === selectedDate.getFullYear() && batchDate.getMonth() === selectedDate.getMonth()
+    const matches = !isNaN(batchDate.getTime()) && batchDate.getFullYear() === selectedDate.getFullYear() && batchDate.getMonth() === selectedDate.getMonth()
+
+    console.log('[Production] Batch:', batch.id, 'Date:', dateStr, 'Parsed:', batchDate, 'Year:', batchDate.getFullYear(), 'Month:', batchDate.getMonth(), 'Matches:', matches)
+
+    return matches
   })
+  
+  console.log('[Production] Selected month:', selectedMonth, 'Selected date:', new Date(selectedMonth + "-01"), 'Total batches:', productionBatches.length, 'Filtered batches:', filteredBatches.length)
 
   // Calculate monthly totals
   const monthlyTotals = {
     totalBatches: filteredBatches.length,
-    totalUnitsProduced: filteredBatches.reduce((sum, batch) => sum + batch.quantity_produced, 0),
-    totalCost: filteredBatches.reduce((sum, batch) => sum + batch.total_cost, 0),
+    totalUnitsProduced: filteredBatches.reduce((sum, batch) => sum + (batch.quantity_produced || batch.quantityProduced || 0), 0),
+    totalCost: filteredBatches.reduce((sum, batch) => sum + (batch.total_cost || batch.totalCost || 0), 0),
     averageCostPerUnit:
       filteredBatches.length > 0
-        ? filteredBatches.reduce((sum, batch) => sum + batch.cost_per_unit, 0) / filteredBatches.length
+        ? filteredBatches.reduce((sum, batch) => sum + (batch.cost_per_unit || batch.costPerUnit || 0), 0) / filteredBatches.length
         : 0,
-  }
-
-  const addRawMaterial = () => {
-    if (rawMaterialInput.item_name && rawMaterialInput.quantity > 0 && rawMaterialInput.unit_cost > 0) {
-      setNewBatch({
-        ...newBatch,
-        rawMaterials: [...newBatch.rawMaterials, { ...rawMaterialInput }],
-      })
-      setRawMaterialInput({ raw_material_id: 0, item_name: "", quantity: 0, unit_cost: 0 })
-    }
   }
 
   const addMiscellaneousCost = () => {
@@ -178,8 +185,17 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
 
   const saveBatch = async () => {
     if (!newBatch.batch_number || !newBatch.product_id || newBatch.quantity_produced <= 0) {
-      alert("Please fill in all required fields")
+      alert("Please fill in all required fields (Batch Number, Product, Units Produced)")
       return
+    }
+
+    if (newBatch.rawMaterials.length === 0 && 
+        Object.values(newBatch.fixedCosts).every(cost => cost === 0) && 
+        newBatch.miscellaneousCosts.length === 0) {
+      const confirm = window.confirm(
+        "No costs have been added to this batch. Are you sure you want to continue?"
+      )
+      if (!confirm) return
     }
 
     try {
@@ -220,20 +236,26 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
         })
       })
 
+      const requestData = {
+        batch_number: newBatch.batch_number,
+        product_id: newBatch.product_id,
+        product_name: newBatch.productName,
+        quantity_produced: newBatch.quantity_produced,
+        production_date: newBatch.production_date,
+        raw_materials_used: newBatch.rawMaterials,
+        total_cost: totalCost,
+        notes: newBatch.notes,
+        costs,
+      }
+      
+      console.log('[Production] Creating batch with data:', requestData)
+
       const response = await fetch("/api/production-batches", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          batch_number: newBatch.batch_number,
-          product_id: newBatch.product_id,
-          quantity_produced: newBatch.quantity_produced,
-          production_date: newBatch.production_date,
-          total_cost: totalCost,
-          notes: newBatch.notes,
-          costs,
-        }),
+        body: JSON.stringify(requestData),
       })
 
       const result = await response.json()
@@ -243,6 +265,7 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
         setNewBatch({
           batch_number: "",
           product_id: "",
+          productName: "",
           quantity_produced: 0,
           production_date: formatDate(new Date()),
           notes: "",
@@ -282,13 +305,35 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
         raw_material_id: selectedMaterial.id,
         item_name: selectedMaterial.name,
         quantity: 0,
-        unit_cost: selectedMaterial.cost_per_unit,
+        unit_cost: selectedMaterial.unit_cost || 0,
       })
     }
   }
 
+  const addRawMaterial = () => {
+    if (rawMaterialInput.item_name && rawMaterialInput.quantity > 0 && rawMaterialInput.unit_cost > 0) {
+      setNewBatch({
+        ...newBatch,
+        rawMaterials: [...newBatch.rawMaterials, { ...rawMaterialInput }],
+      })
+      // Reset the input after adding
+      setRawMaterialInput({ raw_material_id: 0, item_name: "", quantity: 0, unit_cost: 0 })
+    }
+  }
+
   const handleProductSelect = (productId: string) => {
-    setNewBatch({ ...newBatch, product_id: productId })
+    const selectedProduct = products.find(p => p.id.toString() === productId)
+    setNewBatch({ 
+      ...newBatch, 
+      product_id: productId,
+      productName: selectedProduct?.name || ''
+    })
+  }
+
+  const handleEditBatch = (batch: any) => {
+    // Note: Editing is view-only for now since production batches affect inventory
+    // In a real system, editing would require reversing inventory changes
+    alert(`Viewing Batch: ${batch.batch_number || batch.batchNumber}\n\nNote: Production batches cannot be edited after creation because they affect inventory levels. To make changes, please create a new batch.`)
   }
 
   if (loading) {
@@ -317,40 +362,41 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
               New Production Batch
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="mb-6">
-              <DialogTitle className="text-2xl">Create Production Batch</DialogTitle>
-              <DialogDescription className="text-lg">
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader className="mb-4">
+              <DialogTitle className="text-xl">Create Production Batch</DialogTitle>
+              <DialogDescription>
                 Record all costs associated with manufacturing a batch of products
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-8">
+            <div className="space-y-6">
               {/* Basic Information Section */}
-              <div className="bg-slate-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="border rounded-lg p-4">
+                <h3 className="text-base font-semibold mb-4">Basic Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="batch_number">Batch Number *</Label>
+                    <Label htmlFor="batch_number" className="text-sm">Batch Number *</Label>
                     <Input
                       id="batch_number"
                       value={newBatch.batch_number}
                       onChange={(e) => setNewBatch({ ...newBatch, batch_number: e.target.value })}
                       placeholder="e.g., BATCH-001"
                       required
+                      className="h-9"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="product">Product *</Label>
+                    <Label htmlFor="product" className="text-sm">Product *</Label>
                     <Select onValueChange={handleProductSelect} value={newBatch.product_id}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-9">
                         <SelectValue placeholder="Select product" />
                       </SelectTrigger>
                       <SelectContent>
                         {products.map((product) => (
                           <SelectItem key={product.id} value={product.id.toString()}>
-                            {product.name} - {formatCurrency(product.unit_price)}
+                            {product.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -358,113 +404,118 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="quantity_produced">Units Produced *</Label>
+                    <Label htmlFor="quantity_produced" className="text-sm">Units Produced *</Label>
                     <Input
                       id="quantity_produced"
                       type="number"
                       step="0.01"
-                      value={newBatch.quantity_produced}
+                      value={newBatch.quantity_produced || ''}
                       onChange={(e) =>
                         setNewBatch({ ...newBatch, quantity_produced: Number.parseFloat(e.target.value) || 0 })
                       }
                       required
+                      className="h-9"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="production_date">Production Date</Label>
+                    <Label htmlFor="production_date" className="text-sm">Production Date</Label>
                     <Input
                       id="production_date"
                       type="date"
                       value={newBatch.production_date}
                       onChange={(e) => setNewBatch({ ...newBatch, production_date: e.target.value })}
+                      className="h-9"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Raw Materials Section */}
-              <div className="bg-green-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Raw Materials Used</h3>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                    <div className="md:col-span-2 space-y-1">
-                      <Label className="text-sm">Raw Material</Label>
-                      <Select onValueChange={handleRawMaterialSelect}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select material" />
-                        </SelectTrigger>
-                        <SelectContent className="max-w-xs">
-                          {rawMaterials.map((material) => (
-                            <SelectItem key={material.id} value={material.id.toString()}>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{material.name}</span>
-                                <span className="text-xs text-slate-500">
-                                  Stock: {formatNumber(material.stock_quantity)} {material.unit} @{" "}
-                                  {formatCurrency(material.cost_per_unit)}
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-sm">Quantity</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0"
-                        value={rawMaterialInput.quantity}
-                        onChange={(e) =>
-                          setRawMaterialInput({ ...rawMaterialInput, quantity: Number.parseFloat(e.target.value) || 0 })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-sm">Unit Cost</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={rawMaterialInput.unit_cost}
-                        onChange={(e) =>
-                          setRawMaterialInput({
-                            ...rawMaterialInput,
-                            unit_cost: Number.parseFloat(e.target.value) || 0,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-sm">Total</Label>
-                      <div className="px-3 py-2 bg-white rounded-md border text-sm font-medium">
-                        {formatCurrency(rawMaterialInput.quantity * rawMaterialInput.unit_cost)}
+              <div className="border rounded-lg p-4 mt-4">
+                <h3 className="text-base font-semibold mb-2">Raw Materials Used</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                  <strong>Important:</strong> Select a material, enter quantity, then click the <strong>Add Material</strong> button to include it in the batch
+                </p>
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-3">
+                    {/* Row 1: Material Selection and Quantity */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Raw Material</Label>
+                        <Select onValueChange={handleRawMaterialSelect} value={rawMaterialInput.raw_material_id?.toString() || ""}>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select material" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {rawMaterials.map((material) => (
+                              <SelectItem key={material.id} value={material.id.toString()}>
+                                {material.name} - Stock: {formatNumber(material.quantity)} @ {formatCurrency(material.unit_cost)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Quantity to Use</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Enter quantity"
+                          value={rawMaterialInput.quantity || ''}
+                          onChange={(e) =>
+                            setRawMaterialInput({ ...rawMaterialInput, quantity: Number.parseFloat(e.target.value) || 0 })
+                          }
+                          className="h-10"
+                        />
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-sm">&nbsp;</Label>
-                      <Button
-                        type="button"
-                        onClick={addRawMaterial}
-                        variant="outline"
-                        className="w-full bg-transparent"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
+                    
+                    {/* Row 2: Costs and Add Button */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Unit Cost</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={rawMaterialInput.unit_cost || ''}
+                          disabled
+                          className="h-10 bg-gray-100 font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Total Cost</Label>
+                        <div className="px-3 py-2 bg-blue-50 rounded-md border border-blue-200 text-sm font-bold h-10 flex items-center justify-end text-blue-700">
+                          {formatCurrency((rawMaterialInput.quantity || 0) * (rawMaterialInput.unit_cost || 0))}
+                        </div>
+                      </div>
+                      <div className="md:col-span-2 space-y-1">
+                        <Label className="text-sm font-medium">&nbsp;</Label>
+                        <Button
+                          type="button"
+                          onClick={addRawMaterial}
+                          size="default"
+                          className="w-full h-10 bg-blue-600 hover:bg-blue-700"
+                          disabled={!rawMaterialInput.item_name || rawMaterialInput.quantity <= 0}
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Material to Batch
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
                   {newBatch.rawMaterials.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-sm text-slate-600">Added Materials:</h4>
+                    <div className="space-y-2 mt-3">
+                      <h4 className="font-medium text-sm">Added Materials:</h4>
                       {newBatch.rawMaterials.map((material, index) => (
-                        <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border">
+                        <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded border text-sm">
                           <div className="flex-1">
                             <span className="font-medium">{material.item_name}</span>
-                            <span className="text-slate-600 ml-2">
+                            <span className="text-gray-600 ml-2">
                               ({formatNumber(material.quantity)} × {formatCurrency(material.unit_cost)})
                             </span>
                           </div>
@@ -477,7 +528,7 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
                               variant="ghost"
                               size="sm"
                               onClick={() => removeRawMaterial(index)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              className="h-7 w-7 p-0"
                             >
                               <X className="w-4 h-4" />
                             </Button>
@@ -490,109 +541,116 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
               </div>
 
               {/* Fixed Costs Section */}
-              <div className="bg-blue-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Fixed Costs</h3>
+              <div className="border rounded-lg p-4 mt-4">
+                <h3 className="text-base font-semibold mb-4">Fixed Costs</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="laborCost">Labor Cost</Label>
+                    <Label htmlFor="laborCost" className="text-sm">Labor Cost</Label>
                     <Input
                       id="laborCost"
                       type="number"
                       step="0.01"
-                      value={newBatch.fixedCosts.labor}
+                      value={newBatch.fixedCosts.labor || ''}
                       onChange={(e) =>
                         setNewBatch({
                           ...newBatch,
                           fixedCosts: { ...newBatch.fixedCosts, labor: Number.parseFloat(e.target.value) || 0 },
                         })
                       }
+                      className="h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="electricityCost">Electricity Cost</Label>
+                    <Label htmlFor="electricityCost" className="text-sm">Electricity Cost</Label>
                     <Input
                       id="electricityCost"
                       type="number"
                       step="0.01"
-                      value={newBatch.fixedCosts.electricity}
+                      value={newBatch.fixedCosts.electricity || ''}
                       onChange={(e) =>
                         setNewBatch({
                           ...newBatch,
                           fixedCosts: { ...newBatch.fixedCosts, electricity: Number.parseFloat(e.target.value) || 0 },
                         })
                       }
+                      className="h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="packingCost">Packing Cost</Label>
+                    <Label htmlFor="packingCost" className="text-sm">Packing Cost</Label>
                     <Input
                       id="packingCost"
                       type="number"
                       step="0.01"
-                      value={newBatch.fixedCosts.packing}
+                      value={newBatch.fixedCosts.packing || ''}
                       onChange={(e) =>
                         setNewBatch({
                           ...newBatch,
                           fixedCosts: { ...newBatch.fixedCosts, packing: Number.parseFloat(e.target.value) || 0 },
                         })
                       }
+                      className="h-9"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="advertisingCost">Advertising Cost</Label>
+                    <Label htmlFor="advertisingCost" className="text-sm">Advertising Cost</Label>
                     <Input
                       id="advertisingCost"
                       type="number"
                       step="0.01"
-                      value={newBatch.fixedCosts.advertising}
+                      value={newBatch.fixedCosts.advertising || ''}
                       onChange={(e) =>
                         setNewBatch({
                           ...newBatch,
                           fixedCosts: { ...newBatch.fixedCosts, advertising: Number.parseFloat(e.target.value) || 0 },
                         })
                       }
+                      className="h-9"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Miscellaneous Costs Section */}
-              <div className="bg-yellow-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-4">Miscellaneous Costs</h3>
+              <div className="border rounded-lg p-4 mt-4">
+                <h3 className="text-base font-semibold mb-4">Miscellaneous Costs</h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2 space-y-2">
-                      <Label>Cost Description</Label>
+                  <div className="grid grid-cols-12 gap-3">
+                    <div className="col-span-7 space-y-2">
+                      <Label className="text-sm">Cost Description</Label>
                       <Input
                         placeholder="e.g., Quality testing, Maintenance"
                         value={miscCostInput.description}
                         onChange={(e) => setMiscCostInput({ ...miscCostInput, description: e.target.value })}
+                        className="h-9"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Amount</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={miscCostInput.amount}
-                          onChange={(e) =>
-                            setMiscCostInput({ ...miscCostInput, amount: Number.parseFloat(e.target.value) || 0 })
-                          }
-                        />
-                        <Button type="button" onClick={addMiscellaneousCost} variant="outline">
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
+                    <div className="col-span-4 space-y-2">
+                      <Label className="text-sm">Amount</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={miscCostInput.amount || ''}
+                        onChange={(e) =>
+                          setMiscCostInput({ ...miscCostInput, amount: Number.parseFloat(e.target.value) || 0 })
+                        }
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="col-span-1 space-y-2">
+                      <Label className="text-sm">&nbsp;</Label>
+                      <Button type="button" onClick={addMiscellaneousCost} variant="outline" size="sm" className="w-full h-9">
+                        <Plus className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
 
                   {newBatch.miscellaneousCosts.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="font-medium text-sm text-slate-600">Added Costs:</h4>
+                      <h4 className="font-medium text-sm">Added Costs:</h4>
                       {newBatch.miscellaneousCosts.map((cost, index) => (
-                        <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border">
+                        <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded border text-sm">
                           <span className="font-medium flex-1">{cost.description}</span>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold">{formatCurrency(cost.amount)}</span>
@@ -601,7 +659,7 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
                               variant="ghost"
                               size="sm"
                               onClick={() => removeMiscellaneousCost(index)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              className="h-7 w-7 p-0"
                             >
                               <X className="w-4 h-4" />
                             </Button>
@@ -614,32 +672,33 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
               </div>
 
               {/* Notes Section */}
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
+              <div className="space-y-2 mt-4">
+                <Label htmlFor="notes" className="text-sm">Notes</Label>
                 <Textarea
                   id="notes"
                   value={newBatch.notes}
                   onChange={(e) => setNewBatch({ ...newBatch, notes: e.target.value })}
                   placeholder="Additional notes about this batch..."
                   rows={3}
+                  className="resize-none"
                 />
               </div>
 
               {/* Cost Summary */}
-              <div className="bg-slate-100 p-6 rounded-lg">
+              <div className="border-t pt-4 mt-6 bg-gray-50 -mx-6 px-6 py-4">
                 <div className="flex justify-between items-center">
-                  <div className="space-y-2">
-                    <div className="text-2xl font-bold text-slate-900">
+                  <div className="space-y-1">
+                    <div className="text-2xl font-bold text-gray-900">
                       Total Cost: {formatCurrency(calculateTotalCost())}
                     </div>
-                    <div className="text-lg text-slate-700">
+                    <div className="text-base text-gray-600">
                       Cost per Unit:{" "}
                       {newBatch.quantity_produced > 0
                         ? formatCurrency(calculateTotalCost() / newBatch.quantity_produced)
                         : formatCurrency(0)}
                     </div>
                   </div>
-                  <Button onClick={saveBatch} className="bg-green-600 hover:bg-green-700 px-8" disabled={saving}>
+                  <Button onClick={saveBatch} size="lg" className="px-8" disabled={saving}>
                     {saving ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -725,20 +784,32 @@ export function ProductionAccounting({ selectedMonth, onRefresh }: ProductionAcc
                   <TableHead>Cost/Unit</TableHead>
                   <TableHead>Production Date</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredBatches.map((batch) => (
                   <TableRow key={batch.id}>
-                    <TableCell className="font-medium">{batch.batch_number}</TableCell>
-                    <TableCell>{batch.product_name}</TableCell>
-                    <TableCell>{formatNumber(batch.quantity_produced)}</TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(batch.total_cost)}</TableCell>
+                    <TableCell className="font-medium">{batch.batch_number || batch.batchNumber || '-'}</TableCell>
+                    <TableCell>{batch.product_name || batch.productName || '-'}</TableCell>
+                    <TableCell>{formatNumber(batch.quantity_produced || batch.quantityProduced || 0)}</TableCell>
+                    <TableCell className="font-semibold">{formatCurrency(batch.total_cost || batch.totalCost || 0)}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{formatCurrency(batch.cost_per_unit)}</Badge>
+                      <Badge variant="secondary">{formatCurrency(batch.cost_per_unit || batch.costPerUnit || 0)}</Badge>
                     </TableCell>
-                    <TableCell>{new Date(batch.production_date).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(batch.production_date || batch.productionDate).toLocaleDateString()}</TableCell>
                     <TableCell className="max-w-xs truncate">{batch.notes || "-"}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditBatch(batch)}
+                        className="h-8"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" />
+                        View
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

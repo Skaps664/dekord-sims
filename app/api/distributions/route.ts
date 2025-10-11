@@ -14,22 +14,23 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { product_id, recipient_name, recipient_contact, quantity, distribution_date, unit_price, notes } = body
+    const { inventory_item_id, recipient_name, recipient_contact, quantity, unit_price, notes } = body
 
     // Validate required fields
-    const errors = validateRequired({ product_id, recipient_name, quantity, distribution_date, unit_price })
+    const errors = validateRequired({ inventory_item_id, recipient_name, quantity, unit_price })
     if (errors.length > 0) {
       return NextResponse.json(createErrorResponse(errors.join(", ")), { status: 400 })
     }
 
     const newDistribution = await DatabaseClient.createDistribution({
-      product_id: Number.parseInt(product_id),
+      inventory_item_id: Number.parseInt(inventory_item_id),
       recipient_name,
       recipient_contact,
       quantity: Number.parseFloat(quantity),
-      distribution_date,
       unit_price: Number.parseFloat(unit_price),
-      notes,
+      distribution_date: new Date().toISOString(),
+      total_amount: Number.parseFloat(quantity) * Number.parseFloat(unit_price),
+      notes: notes || '',
     })
 
     return NextResponse.json(createSuccessResponse(newDistribution))

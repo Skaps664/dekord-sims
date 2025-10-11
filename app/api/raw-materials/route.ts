@@ -14,22 +14,40 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, unit, cost_per_unit, supplier, stock_quantity, minimum_stock } = body
+    console.log('[raw-materials POST] Received data:', body)
+    
+    const { 
+      name, 
+      quantity, 
+      unit_cost, 
+      supplier, 
+      notes, 
+      barcode, 
+      minimum_stock, 
+      location 
+    } = body
 
     // Validate required fields
-    const errors = validateRequired({ name, unit, cost_per_unit })
+    const errors = validateRequired({ name, quantity })
     if (errors.length > 0) {
       return NextResponse.json(createErrorResponse(errors.join(", ")), { status: 400 })
     }
 
-    const newMaterial = await DatabaseClient.createRawMaterial({
+    const materialData = {
+      item_type: 'raw_material',
       name,
-      unit,
-      cost_per_unit: Number.parseFloat(cost_per_unit),
-      supplier,
-      stock_quantity: Number.parseFloat(stock_quantity || 0),
-      minimum_stock: Number.parseFloat(minimum_stock || 0),
-    })
+      quantity: Number.parseFloat(quantity),
+      unit_cost: unit_cost ? Number.parseFloat(unit_cost) : 0,
+      supplier: supplier || '',
+      location: location || 'Raw Materials Storage',
+      notes: notes || '',
+      barcode: barcode || '',
+      minimum_stock: minimum_stock ? Number.parseInt(minimum_stock) : 0,
+    }
+    
+    console.log('[raw-materials POST] Creating material with data:', materialData)
+
+    const newMaterial = await DatabaseClient.createInventoryItem(materialData)
 
     return NextResponse.json(createSuccessResponse(newMaterial))
   } catch (error) {

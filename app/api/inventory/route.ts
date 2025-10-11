@@ -64,20 +64,23 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { product_id, quantity, minimum_stock, maximum_stock, location } = body
+    const { item_type, name, quantity, unit_cost, selling_price, location, notes } = body
 
-    if (!product_id || quantity === undefined) {
-      return NextResponse.json(createErrorResponse("Product ID and quantity are required"), { status: 400 })
+    if (!item_type || !name || quantity === undefined) {
+      return NextResponse.json(createErrorResponse("Item type, name and quantity are required"), { status: 400 })
     }
 
-    const updatedInventory = await DatabaseClient.updateInventory(product_id, {
-      quantity,
-      minimum_stock,
-      maximum_stock,
-      location,
+    const inventoryItem = await DatabaseClient.createInventoryItem({
+      item_type, // 'raw_material' or 'finished_product'
+      name,
+      quantity: parseFloat(quantity),
+      unit_cost: unit_cost ? parseFloat(unit_cost) : null,
+      selling_price: selling_price ? parseFloat(selling_price) : null,
+      location: location || 'Main Warehouse',
+      notes: notes || '',
     })
 
-    return NextResponse.json(createSuccessResponse(updatedInventory))
+    return NextResponse.json(createSuccessResponse(inventoryItem))
   } catch (error) {
     return NextResponse.json(handleApiError(error), { status: 500 })
   }

@@ -84,16 +84,70 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
     try {
       setLoading(true)
       const [distributionsRes, inventoryRes] = await Promise.all([
-        fetch("/api/distribution-performance"),
+        fetch("/api/distributions"),
         fetch("/api/inventory"),
       ])
 
       const [distributionsResult, inventoryResult] = await Promise.all([distributionsRes.json(), inventoryRes.json()])
 
-      if (distributionsResult.success) setDistributions(distributionsResult.data)
+      if (distributionsResult.success) {
+        // Map distributions and calculate profit metrics
+        const mappedDistributions = distributionsResult.data.map((dist: any) => {
+          // Find the product to get cost_price
+          const product = inventoryResult.success 
+            ? inventoryResult.data.find((inv: any) => inv.id === dist.inventory_item_id)
+            : null
+          
+          const costPrice = product?.unit_cost || 0
+          const unitPrice = dist.unit_price || 0
+          const quantity = dist.quantity || 0
+          
+          const costOfGoodsSold = costPrice * quantity
+          const totalValue = unitPrice * quantity
+          const grossProfit = totalValue - costOfGoodsSold
+          const profitMarginPercent = totalValue > 0 ? (grossProfit / totalValue) * 100 : 0
+          
+          return {
+            id: dist.id,
+            product_id: dist.inventory_item_id,
+            product_name: product?.name || 'Unknown Product',
+            recipient_name: dist.recipient_name,
+            recipient_contact: dist.recipient_contact,
+            quantity: quantity,
+            distribution_date: dist.distribution_date,
+            unit_price: unitPrice,
+            total_value: totalValue,
+            status: dist.status || 'completed',
+            notes: dist.notes,
+            cost_price: costPrice,
+            cost_of_goods_sold: costOfGoodsSold,
+            gross_profit: grossProfit,
+            profit_margin_percent: profitMarginPercent
+          }
+        })
+        setDistributions(mappedDistributions)
+      }
       if (inventoryResult.success) {
-        // Filter only products with stock > 0
-        const availableProducts = inventoryResult.data.filter((item: Product) => item.current_stock > 0)
+        // Filter only finished products with stock > 0 for distribution
+        const availableProducts = inventoryResult.data
+          .filter((item: any) => 
+            item.item_type === 'finished_product' && (item.current_stock || item.quantity) > 0
+          )
+          .map((item: any) => ({
+            product_id: item.id,
+            product_name: item.name,
+            category: item.category || 'Finished Product',
+            unit_price: item.selling_price || item.unit_cost || 0,
+            cost_price: item.unit_cost || 0,
+            current_stock: item.current_stock || item.quantity || 0,
+            minimum_stock: item.minimum_stock || 0,
+            maximum_stock: item.maximum_stock || 0,
+            location: item.location || 'Warehouse',
+            stock_status: (item.current_stock || item.quantity) > (item.minimum_stock || 0) ? 'In Stock' : 'Low Stock',
+            inventory_value: (item.current_stock || item.quantity) * (item.unit_cost || 0),
+            last_updated: item.last_updated || item.updatedAt,
+            barcode: item.barcode
+          }))
         setProducts(availableProducts)
       }
     } catch (error) {
@@ -108,14 +162,14 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
   }, [])
 
   // Filter distributions by selected month
-  const filteredDistributions = distributions.filter((dist) => {
+  const filteredDistributions = Array.isArray(distributions) ? distributions.filter((dist) => {
     const distDate = new Date(dist.distribution_date)
     const selectedDate = new Date(selectedMonth + "-01")
     const matchesMonth =
       distDate.getFullYear() === selectedDate.getFullYear() && distDate.getMonth() === selectedDate.getMonth()
-    const matchesSearch = dist.recipient_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = (dist.recipient_name || "").toLowerCase().includes(searchTerm.toLowerCase())
     return matchesMonth && matchesSearch
-  })
+  }) : []
 
   const handleProductSelect = (productId: string) => {
     const product = products.find((p) => p.product_id === Number.parseInt(productId))
@@ -153,7 +207,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          product_id: newDistribution.product_id,
+          inventory_item_id: newDistribution.product_id,
           recipient_name: newDistribution.recipient_name,
           recipient_contact: newDistribution.recipient_contact || null,
           quantity: newDistribution.quantity,
@@ -192,8 +246,9 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
+  const getStatusBadge = (status?: string) => {
+    const s = (status || "").toString().toLowerCase()
+    switch (s) {
       case "pending":
         return <Badge variant="secondary">Pending</Badge>
       case "completed":
@@ -205,11 +260,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
       case "cancelled":
         return <Badge variant="destructive">Cancelled</Badge>
       default:
-        return (
-          <Badge variant="default" className="bg-green-600">
-            Completed
-          </Badge>
-        )
+        return <Badge variant="outline">Unknown</Badge>
     }
   }
 
@@ -494,28 +545,28 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
               <TableRow key={distribution.id}>
                 <TableCell className="font-medium">{distribution.recipient_name}</TableCell>
                 <TableCell>{distribution.recipient_contact || "-"}</TableCell>
-                <TableCell>{distribution.product_name}</TableCell>
-                <TableCell>{formatNumber(distribution.quantity)}</TableCell>
-                <TableCell>{formatCurrency(distribution.unit_price)}</TableCell>
-                <TableCell className="font-semibold">{formatCurrency(distribution.total_value)}</TableCell>
-                <TableCell className="text-red-600">{formatCurrency(distribution.cost_of_goods_sold)}</TableCell>
+                <TableCell>{distribution.product_name || 'Unknown'}</TableCell>
+                <TableCell>{formatNumber(distribution.quantity || 0)}</TableCell>
+                <TableCell>{formatCurrency(distribution.unit_price || 0)}</TableCell>
+                <TableCell className="font-semibold">{formatCurrency(distribution.total_value || 0)}</TableCell>
+                <TableCell className="text-red-600">{formatCurrency(distribution.cost_of_goods_sold || 0)}</TableCell>
                 <TableCell
-                  className={`font-semibold ${distribution.gross_profit >= 0 ? "text-green-600" : "text-red-600"}`}
+                  className={`font-semibold ${(distribution.gross_profit || 0) >= 0 ? "text-green-600" : "text-red-600"}`}
                 >
-                  {formatCurrency(distribution.gross_profit)}
+                  {formatCurrency(distribution.gross_profit || 0)}
                 </TableCell>
                 <TableCell>
                   <Badge
-                    variant={distribution.profit_margin_percent >= 20 ? "default" : "secondary"}
+                    variant={(distribution.profit_margin_percent || 0) >= 20 ? "default" : "secondary"}
                     className={
-                      distribution.profit_margin_percent >= 20
+                      (distribution.profit_margin_percent || 0) >= 20
                         ? "bg-green-600"
-                        : distribution.profit_margin_percent >= 10
+                        : (distribution.profit_margin_percent || 0) >= 10
                           ? "bg-yellow-600"
                           : "bg-red-600"
                     }
                   >
-                    {distribution.profit_margin_percent.toFixed(1)}%
+                    {(distribution.profit_margin_percent || 0).toFixed(1)}%
                   </Badge>
                 </TableCell>
                 <TableCell>{new Date(distribution.distribution_date).toLocaleDateString()}</TableCell>

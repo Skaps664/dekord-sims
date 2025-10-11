@@ -5,32 +5,46 @@ import { Badge } from "@/components/ui/badge"
 import { TrendingUp, DollarSign, Package, ShoppingCart, AlertTriangle, Factory } from "lucide-react"
 
 interface InventoryItem {
-  id: string
+  id: string | number
   name: string
-  sku: string
-  category: string
-  inventoryType: "finished" | "raw"
+  item_type?: "finished_product" | "raw_material"
+  inventoryType?: "finished" | "raw"
   quantity: number
-  minStock: number
-  unitCost: number
+  current_stock?: number
+  minimum_stock?: number
+  minStock?: number
+  unit_cost: number
+  unitCost?: number
+  selling_price?: number
   sellingPrice?: number
-  supplier: string
-  lastUpdated: string
+  supplier?: string
+  location?: string
   barcode?: string
+  batch_id?: number
+  batch_number?: string
   batchId?: string
   batchName?: string
+  product_id?: number
   productId?: string
+  last_updated?: string
+  lastUpdated?: string
 }
 
 interface Distribution {
-  id: string
-  recipient: string
-  recipientType: "distributor" | "shop_keeper" | "individual" | "friend_family" | "influencer_marketing"
-  location: string
-  personName: string
-  phoneNumber: string
-  cnic: string
-  items: {
+  id: string | number
+  recipient_name?: string
+  recipient?: string
+  recipientType?: "distributor" | "shop_keeper" | "individual" | "friend_family" | "influencer_marketing"
+  location?: string
+  personName?: string
+  phoneNumber?: string
+  cnic?: string
+  inventory_item_id?: number
+  quantity?: number
+  unit_price?: number
+  total_amount?: number
+  gross_profit?: number
+  items?: {
     itemId: string
     itemName: string
     quantity: number
@@ -39,34 +53,47 @@ interface Distribution {
     batchId?: string
     batchName?: string
   }[]
-  totalValue: number
-  totalProfit: number
-  date: string
-  status: "pending" | "completed" | "cancelled"
-  month: string
+  totalValue?: number
+  totalProfit?: number
+  date?: string
+  distribution_date?: string
+  status?: "pending" | "completed" | "cancelled"
+  month?: string
 }
 
 interface ProductionBatch {
-  id: string
-  batchName: string
-  productId: string
-  productName: string
-  unitsProduced: number
-  productionDate: string
-  month: string
-  rawMaterials: { itemId: string; itemName: string; quantity: number; unitCost: number }[]
-  fixedCosts: {
+  id: string | number
+  batchName?: string
+  batch_number?: string
+  productId?: string | number
+  product_id?: string | number
+  productName?: string
+  product_name?: string
+  unitsProduced?: number
+  quantityProduced?: number
+  quantity_produced?: number
+  quantity_remaining?: number
+  rejected_units?: number
+  productionDate?: string
+  production_date?: string
+  month?: string
+  rawMaterials?: { itemId: string; itemName: string; quantity: number; unitCost: number }[]
+  raw_materials_used?: any[]
+  costs?: any[]
+  fixedCosts?: {
     labor: number
     electricity: number
     packing: number
     advertising: number
   }
-  miscellaneousCosts: { description: string; amount: number }[]
-  totalRawMaterialCost: number
-  totalFixedCosts: number
-  totalMiscellaneousCosts: number
-  totalCost: number
-  costPerUnit: number
+  miscellaneousCosts?: { description: string; amount: number }[]
+  totalRawMaterialCost?: number
+  totalFixedCosts?: number
+  totalMiscellaneousCosts?: number
+  totalCost?: number
+  total_cost?: number
+  costPerUnit?: number
+  cost_per_unit?: number
 }
 
 interface FinancialOverviewProps {
@@ -82,32 +109,75 @@ export function FinancialOverview({
   selectedMonth,
   productionBatches,
 }: FinancialOverviewProps) {
-  const finishedProducts = inventory.filter((item) => item.inventoryType === "finished")
-  const rawMaterials = inventory.filter((item) => item.inventoryType === "raw")
+  // Filter inventory by type using actual database field
+  const finishedProducts = inventory.filter((item) => 
+    item.item_type === "finished_product" || item.inventoryType === "finished"
+  )
+  const rawMaterials = inventory.filter((item) => 
+    item.item_type === "raw_material" || item.inventoryType === "raw"
+  )
 
+  // Calculate inventory values
   const totalFinishedProductsValue = finishedProducts.reduce(
-    (sum, item) => sum + item.quantity * (item.sellingPrice || item.unitCost),
+    (sum, item) => {
+      const quantity = item.quantity || item.current_stock || 0
+      const price = item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0
+      return sum + quantity * price
+    },
     0,
   )
-  const totalRawMaterialsValue = rawMaterials.reduce((sum, item) => sum + item.quantity * item.unitCost, 0)
+  
+  const totalRawMaterialsValue = rawMaterials.reduce((sum, item) => {
+    const quantity = item.quantity || item.current_stock || 0
+    const cost = item.unit_cost || item.unitCost || 0
+    return sum + quantity * cost
+  }, 0)
+  
   const totalInventoryValue = totalFinishedProductsValue + totalRawMaterialsValue
 
-  const completedDistributions = distributions.filter((d) => d.status === "completed" && d.month === selectedMonth)
-  const totalRevenue = completedDistributions.reduce((sum, dist) => sum + dist.totalValue, 0)
-  const totalCost = completedDistributions.reduce(
-    (sum, dist) => sum + dist.items.reduce((itemSum, item) => itemSum + item.quantity * item.unitCost, 0),
-    0,
+  // Filter distributions by month using distribution_date
+  const filteredDistributions = distributions.filter((d) => {
+    const distDate = d.distribution_date || d.date
+    if (!distDate) return false
+    const distMonth = new Date(distDate).toISOString().slice(0, 7)
+    return distMonth === selectedMonth
+  })
+
+  const completedDistributions = filteredDistributions.filter((d) => 
+    d.status === "completed" || !d.status // No status means completed
   )
-  const totalProfit = completedDistributions.reduce((sum, dist) => sum + dist.totalProfit, 0) // Use calculated profit from distributions
+
+  // Calculate revenue and profit from actual distribution data
+  const totalRevenue = completedDistributions.reduce((sum, dist) => {
+    return sum + (dist.total_amount || dist.totalValue || 0)
+  }, 0)
+
+  const totalProfit = completedDistributions.reduce((sum, dist) => {
+    return sum + (dist.gross_profit || dist.totalProfit || 0)
+  }, 0)
+
   const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
-  const pendingValue = distributions
-    .filter((d) => d.status === "pending" && d.month === selectedMonth)
-    .reduce((sum, dist) => sum + dist.totalValue, 0)
+  const pendingValue = filteredDistributions
+    .filter((d) => d.status === "pending")
+    .reduce((sum, dist) => sum + (dist.total_amount || dist.totalValue || 0), 0)
 
-  const monthlyBatches = productionBatches.filter((batch) => batch.month === selectedMonth)
-  const totalProductionCost = monthlyBatches.reduce((sum, batch) => sum + batch.totalCost, 0)
-  const totalUnitsProduced = monthlyBatches.reduce((sum, batch) => sum + batch.unitsProduced, 0)
+  // Filter production batches by month
+  const monthlyBatches = productionBatches.filter((batch) => {
+    const batchDate = batch.production_date || batch.productionDate
+    if (!batchDate) return false
+    const batchMonth = new Date(batchDate).toISOString().slice(0, 7)
+    return batchMonth === selectedMonth
+  })
+
+  const totalProductionCost = monthlyBatches.reduce((sum, batch) => {
+    return sum + (batch.totalCost || batch.total_cost || 0)
+  }, 0)
+
+  const totalUnitsProduced = monthlyBatches.reduce((sum, batch) => {
+    return sum + (batch.quantityProduced || batch.quantity_produced || batch.unitsProduced || 0)
+  }, 0)
+
   const avgProductionCostPerUnit = totalUnitsProduced > 0 ? totalProductionCost / totalUnitsProduced : 0
 
   const categoryBreakdown = {
@@ -116,17 +186,25 @@ export function FinancialOverview({
   }
 
   const topItems = inventory
-    .map((item) => ({
-      ...item,
-      totalValue:
-        item.quantity * (item.inventoryType === "finished" ? item.sellingPrice || item.unitCost : item.unitCost),
-    }))
+    .map((item) => {
+      const quantity = item.quantity || item.current_stock || 0
+      const isFinished = item.item_type === "finished_product" || item.inventoryType === "finished"
+      const price = isFinished 
+        ? (item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0)
+        : (item.unit_cost || item.unitCost || 0)
+      return {
+        ...item,
+        totalValue: quantity * price
+      }
+    })
     .sort((a, b) => b.totalValue - a.totalValue)
     .slice(0, 5)
 
   const recipientTypeBreakdown = completedDistributions.reduce(
     (acc, dist) => {
-      acc[dist.recipientType] = (acc[dist.recipientType] || 0) + dist.totalValue
+      const type = dist.recipientType || 'unknown'
+      const value = dist.total_amount || dist.totalValue || 0
+      acc[type] = (acc[type] || 0) + value
       return acc
     },
     {} as Record<string, number>,
@@ -134,18 +212,23 @@ export function FinancialOverview({
 
   const recipientProfitBreakdown = completedDistributions.reduce(
     (acc, dist) => {
-      if (!acc[dist.recipientType]) {
-        acc[dist.recipientType] = { revenue: 0, profit: 0, orders: 0 }
+      const type = dist.recipientType || 'unknown'
+      if (!acc[type]) {
+        acc[type] = { revenue: 0, profit: 0, orders: 0 }
       }
-      acc[dist.recipientType].revenue += dist.totalValue
-      acc[dist.recipientType].profit += dist.totalProfit
-      acc[dist.recipientType].orders += 1
+      acc[type].revenue += (dist.total_amount || dist.totalValue || 0)
+      acc[type].profit += (dist.gross_profit || dist.totalProfit || 0)
+      acc[type].orders += 1
       return acc
     },
     {} as Record<string, { revenue: number; profit: number; orders: number }>,
   )
 
-  const lowStockItems = inventory.filter((item) => item.quantity <= item.minStock)
+  const lowStockItems = inventory.filter((item) => {
+    const quantity = item.quantity || item.current_stock || 0
+    const minStock = item.minimum_stock || item.minStock || 0
+    return quantity <= minStock && minStock > 0
+  })
 
   return (
     <div className="space-y-6">
@@ -338,20 +421,28 @@ export function FinancialOverview({
               </div>
             </div>
             <div className="space-y-2">
-              {monthlyBatches.slice(0, 5).map((batch) => (
-                <div key={batch.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                  <div>
-                    <div className="font-medium">{batch.batchName}</div>
-                    <div className="text-sm text-slate-600">
-                      {batch.productName} • {batch.unitsProduced} units
+              {monthlyBatches.slice(0, 5).map((batch) => {
+                const batchName = batch.batch_number || batch.batchName || `Batch ${batch.id}`
+                const productName = batch.product_name || batch.productName || 'Unknown Product'
+                const unitsProduced = batch.quantity_produced || batch.quantityProduced || batch.unitsProduced || 0
+                const totalCost = batch.total_cost || batch.totalCost || 0
+                const costPerUnit = batch.cost_per_unit || batch.costPerUnit || 0
+                
+                return (
+                  <div key={batch.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">{batchName}</div>
+                      <div className="text-sm text-slate-600">
+                        {productName} • {unitsProduced} units
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium">${totalCost.toLocaleString()}</div>
+                      <div className="text-sm text-slate-500">${costPerUnit.toFixed(2)}/unit</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-medium">${batch.totalCost.toLocaleString()}</div>
-                    <div className="text-sm text-slate-500">${batch.costPerUnit.toFixed(2)}/unit</div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -374,16 +465,17 @@ export function FinancialOverview({
                   <div>
                     <div className="text-sm font-medium">{item.name}</div>
                     <div className="text-xs text-slate-500">
-                      {item.sku}
-                      {item.batchName && ` • Batch: ${item.batchName}`}
+                      {(item.batch_number || item.batchName) && ` • Batch: ${item.batch_number || item.batchName}`}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-medium">${item.totalValue.toLocaleString()}</div>
                   <div className="text-xs text-slate-500">
-                    {item.quantity} × $
-                    {item.inventoryType === "finished" ? item.sellingPrice || item.unitCost : item.unitCost}
+                    {item.quantity || item.current_stock || 0} × $
+                    {item.item_type === "finished_product" || item.inventoryType === "finished" 
+                      ? (item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0)
+                      : (item.unit_cost || item.unitCost || 0)}
                   </div>
                 </div>
               </div>

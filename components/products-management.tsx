@@ -23,7 +23,7 @@ import { Switch } from "@/components/ui/switch"
 import { Plus, Edit, Trash2, Package, Calendar, Info } from "lucide-react"
 
 interface Product {
-  id: string
+  id: string | number
   name: string
   type: string
   description: string
@@ -36,7 +36,8 @@ interface Product {
 
 interface ProductsManagementProps {
   products: Product[]
-  onAddProduct: (product: Omit<Product, "id" | "createdDate">) => void
+  // Accept a flexible payload: API expects { name, description, category, unit_price, cost_price, barcode }
+  onAddProduct: (product: any) => void
   onUpdateProduct: (productId: string, updates: Partial<Product>) => void
   onDeleteProduct: (productId: string) => void
 }
@@ -58,6 +59,7 @@ export function ProductsManagement({
     additionalInfo: "",
     isActive: true,
   })
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const resetForm = () => {
     setFormData({
@@ -74,10 +76,26 @@ export function ProductsManagement({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setSubmitError(null)
+    if (!formData.name || !formData.description || !formData.type) {
+      setSubmitError("Please provide a name, details and type")
+      return
+    }
+
     if (editingProduct) {
-      onUpdateProduct(editingProduct.id, formData)
+      onUpdateProduct(String(editingProduct.id), formData)
     } else {
-      onAddProduct(formData)
+      // Pass all form fields to API
+      const payload = {
+        name: formData.name,
+        description: formData.description || null,
+        category: formData.type,
+        ideaCreationDate: formData.ideaCreationDate || null,
+        productionStartDate: formData.productionStartDate || null,
+        additionalInfo: formData.additionalInfo || null,
+        isActive: formData.isActive,
+      }
+      onAddProduct(payload)
     }
     resetForm()
     setShowAddDialog(false)
@@ -151,6 +169,7 @@ export function ProductsManagement({
                   />
                 </div>
               </div>
+
 
               <div className="space-y-2">
                 <Label htmlFor="description">Description *</Label>
@@ -272,50 +291,54 @@ export function ProductsManagement({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{product.type}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">{product.description}</TableCell>
-                  <TableCell>
-                    {product.ideaCreationDate ? new Date(product.ideaCreationDate).toLocaleDateString() : "Not set"}
-                  </TableCell>
-                  <TableCell>
-                    {product.productionStartDate
-                      ? new Date(product.productionStartDate).toLocaleDateString()
-                      : "Not set"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        checked={product.isActive}
-                        onCheckedChange={(checked) => toggleProductStatus(product.id, checked)}
-                        size="sm"
-                      />
-                      <Badge variant={product.isActive ? "default" : "secondary"}>
-                        {product.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(product)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(product.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {products.map((product) => {
+                // Always use _id as unique key, convert to string for React key
+                const uniqueKey = String((product as any)._id || `product-${product.id}-${product.name}`)
+                const productIdStr = String(product.id)
+                return (
+                  <TableRow key={uniqueKey}>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{product.type}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">{product.description}</TableCell>
+                    <TableCell>
+                      {product.ideaCreationDate ? new Date(product.ideaCreationDate).toLocaleDateString() : "Not set"}
+                    </TableCell>
+                    <TableCell>
+                      {product.productionStartDate
+                        ? new Date(product.productionStartDate).toLocaleDateString()
+                        : "Not set"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          checked={product.isActive}
+                          onCheckedChange={(checked) => toggleProductStatus(productIdStr, checked)}
+                        />
+                        <Badge variant={product.isActive ? "default" : "secondary"}>
+                          {product.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(product)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(productIdStr)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
           {products.length === 0 && (

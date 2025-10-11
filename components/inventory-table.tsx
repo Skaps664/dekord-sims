@@ -10,20 +10,17 @@ import { Edit, Trash2, Search } from "lucide-react"
 interface InventoryItem {
   id: string
   name: string
-  sku: string
-  category: string
-  inventoryType: "finished" | "raw"
+  item_type: "raw_material" | "finished_product"
   quantity: number
-  minStock: number
-  unitCost: number
-  sellingPrice?: number
-  supplier: string
-  lastUpdated: string
+  unit_cost: number
+  selling_price?: number
+  location: string
+  notes: string
+  supplier?: string
   barcode?: string
-  batchId?: string
-  batchName?: string
-  productionDate?: string
-  productId?: string
+  current_stock: number
+  minimum_stock?: number
+  last_updated?: string
 }
 
 interface InventoryTableProps {
@@ -46,12 +43,14 @@ export function InventoryTable({
   const [loading, setLoading] = useState(false)
 
   const filteredInventory = inventory.filter((item) => {
-    const matchesType = !inventoryType || item.inventoryType === inventoryType
+    // Convert UI inventory type to database item_type
+    const dbItemType = inventoryType === 'raw' ? 'raw_material' : inventoryType === 'finished' ? 'finished_product' : null
+    const matchesType = !inventoryType || item.item_type === dbItemType
     const searchLower = searchTerm.toLowerCase()
     const matchesSearch =
       item.name.toLowerCase().includes(searchLower) ||
-      item.sku.toLowerCase().includes(searchLower) ||
-      item.category.toLowerCase().includes(searchLower) ||
+      item.barcode?.toLowerCase().includes(searchLower) ||
+      item.location.toLowerCase().includes(searchLower) ||
       (item.barcode && item.barcode.toLowerCase().includes(searchLower))
 
     return matchesType && matchesSearch
@@ -66,12 +65,17 @@ export function InventoryTable({
 
     try {
       setLoading(true)
-      const response = await fetch(`/api/inventory/${editingItem.id}`, {
+      // Use the appropriate API endpoint based on item type
+      const apiEndpoint = editingItem.item_type === 'raw_material' 
+        ? `/api/raw-materials/${editingItem.id}`
+        : `/api/inventory/${editingItem.id}`
+        
+      const response = await fetch(apiEndpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editingItem,
-          lastUpdated: new Date().toISOString(),
+          last_updated: new Date().toISOString(),
         }),
       })
 
@@ -101,7 +105,14 @@ export function InventoryTable({
 
     try {
       setLoading(true)
-      const response = await fetch(`/api/inventory/${itemId}`, {
+      
+      // Find the item to determine its type
+      const item = inventory.find(i => i.id === itemId)
+      const apiEndpoint = item?.item_type === 'raw_material' 
+        ? `/api/raw-materials/${itemId}`
+        : `/api/inventory/${itemId}`
+        
+      const response = await fetch(apiEndpoint, {
         method: "DELETE",
       })
 
@@ -155,13 +166,13 @@ export function InventoryTable({
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>SKU</TableHead>
-              {!compact && <TableHead>Category</TableHead>}
+              <TableHead>Barcode</TableHead>
               <TableHead>Quantity</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Unit Cost</TableHead>
               {inventoryType === "finished" && <TableHead>Selling Price</TableHead>}
               {!compact && <TableHead>Supplier</TableHead>}
+              {!compact && <TableHead>Location</TableHead>}
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -169,15 +180,15 @@ export function InventoryTable({
             {filteredInventory.map((item) => (
               <TableRow key={item.id}>
                 <TableCell className="font-medium">{item.name}</TableCell>
-                <TableCell className="font-mono text-sm">{item.sku}</TableCell>
-                {!compact && <TableCell>{item.category}</TableCell>}
+                <TableCell className="font-mono text-sm">{item.barcode || 'N/A'}</TableCell>
                 <TableCell>{item.quantity.toLocaleString()}</TableCell>
-                <TableCell>{getStockStatus(item.quantity, item.minStock)}</TableCell>
-                <TableCell className="text-green-600 font-medium">${item.unitCost.toFixed(2)}</TableCell>
+                <TableCell>{getStockStatus(item.quantity, item.minimum_stock || 0)}</TableCell>
+                <TableCell className="text-green-600 font-medium">${item.unit_cost.toFixed(2)}</TableCell>
                 {inventoryType === "finished" && (
-                  <TableCell className="text-blue-600 font-medium">${item.sellingPrice?.toFixed(2) || "N/A"}</TableCell>
+                  <TableCell className="text-blue-600 font-medium">${item.selling_price?.toFixed(2) || "N/A"}</TableCell>
                 )}
-                {!compact && <TableCell>{item.supplier}</TableCell>}
+                {!compact && <TableCell>{item.supplier || 'N/A'}</TableCell>}
+                {!compact && <TableCell>{item.location}</TableCell>}
                 <TableCell>
                   <div className="flex items-center space-x-2">
                     <Button variant="ghost" size="sm" onClick={() => editItem(item)} disabled={loading}>
@@ -221,10 +232,10 @@ export function InventoryTable({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">SKU</label>
+                  <label className="block text-sm font-medium mb-1">Barcode</label>
                   <Input
-                    value={editingItem.sku}
-                    onChange={(e) => setEditingItem({ ...editingItem, sku: e.target.value })}
+                    value={editingItem.barcode || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, barcode: e.target.value })}
                     disabled={loading}
                   />
                 </div>
@@ -244,8 +255,8 @@ export function InventoryTable({
                   <label className="block text-sm font-medium mb-1">Min Stock</label>
                   <Input
                     type="number"
-                    value={editingItem.minStock}
-                    onChange={(e) => setEditingItem({ ...editingItem, minStock: Number.parseInt(e.target.value) || 0 })}
+                    value={editingItem.minimum_stock || 0}
+                    onChange={(e) => setEditingItem({ ...editingItem, minimum_stock: Number.parseInt(e.target.value) || 0 })}
                     disabled={loading}
                   />
                 </div>
@@ -254,24 +265,24 @@ export function InventoryTable({
                   <Input
                     type="number"
                     step="0.01"
-                    value={editingItem.unitCost}
+                    value={editingItem.unit_cost}
                     onChange={(e) =>
-                      setEditingItem({ ...editingItem, unitCost: Number.parseFloat(e.target.value) || 0 })
+                      setEditingItem({ ...editingItem, unit_cost: Number.parseFloat(e.target.value) || 0 })
                     }
                     disabled={loading}
                   />
                 </div>
               </div>
 
-              {editingItem.inventoryType === "finished" && (
+              {editingItem.item_type === "finished_product" && (
                 <div>
                   <label className="block text-sm font-medium mb-1">Selling Price</label>
                   <Input
                     type="number"
                     step="0.01"
-                    value={editingItem.sellingPrice || 0}
+                    value={editingItem.selling_price || 0}
                     onChange={(e) =>
-                      setEditingItem({ ...editingItem, sellingPrice: Number.parseFloat(e.target.value) || 0 })
+                      setEditingItem({ ...editingItem, selling_price: Number.parseFloat(e.target.value) || 0 })
                     }
                     disabled={loading}
                   />
@@ -279,10 +290,10 @@ export function InventoryTable({
               )}
 
               <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
+                <label className="block text-sm font-medium mb-1">Location</label>
                 <Input
-                  value={editingItem.category}
-                  onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
+                  value={editingItem.location}
+                  onChange={(e) => setEditingItem({ ...editingItem, location: e.target.value })}
                   disabled={loading}
                 />
               </div>
@@ -290,8 +301,17 @@ export function InventoryTable({
               <div>
                 <label className="block text-sm font-medium mb-1">Supplier</label>
                 <Input
-                  value={editingItem.supplier}
+                  value={editingItem.supplier || ''}
                   onChange={(e) => setEditingItem({ ...editingItem, supplier: e.target.value })}
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <Input
+                  value={editingItem.notes}
+                  onChange={(e) => setEditingItem({ ...editingItem, notes: e.target.value })}
                   disabled={loading}
                 />
               </div>

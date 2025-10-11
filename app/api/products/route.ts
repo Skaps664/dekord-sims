@@ -36,21 +36,29 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, description, category, unit_price, cost_price, barcode } = body
+    const { name, description, category, unit_price, cost_price, barcode, ideaCreationDate, productionStartDate, additionalInfo, isActive } = body
 
-    // Validate required fields
-    const errors = validateRequired({ name, unit_price, cost_price })
+    // Only 'name' is required for initial product declaration (prices optional)
+    const errors = validateRequired({ name })
     if (errors.length > 0) {
-      return NextResponse.json(createErrorResponse(errors.join(", ")), { status: 400 })
+      return NextResponse.json(createErrorResponse(errors.join(", ")) , { status: 400 })
     }
+
+    // Parse numeric fields only if provided; otherwise keep null
+    const parsedUnitPrice = unit_price !== undefined && unit_price !== null && unit_price !== "" ? Number.parseFloat(unit_price) : null
+    const parsedCostPrice = cost_price !== undefined && cost_price !== null && cost_price !== "" ? Number.parseFloat(cost_price) : null
 
     const newProduct = await DatabaseClient.createProduct({
       name,
       description,
       category,
-      unit_price: Number.parseFloat(unit_price),
-      cost_price: Number.parseFloat(cost_price),
+      unit_price: parsedUnitPrice,
+      cost_price: parsedCostPrice,
       barcode,
+      ideaCreationDate,
+      productionStartDate,
+      additionalInfo,
+      isActive,
     })
 
     return NextResponse.json(createSuccessResponse(newProduct))
