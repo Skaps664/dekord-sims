@@ -13,7 +13,7 @@ How IDs and relations are preserved
 
 Environment variables
 
-- Set `MONGODB_URI` to your MongoDB connection string (or `DATABASE_URL` will also be accepted).
+- Set `MONGODB_URI` to your MongoDB connecton string (or `DATABASE_URL` will also be accepted).
 
 Quick setup
 
