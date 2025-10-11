@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   BarChart,
   Bar,
@@ -20,7 +22,7 @@ import {
   AreaChart,
   Line,
 } from "recharts"
-import { Download, TrendingUp, Package, Users, Target, AlertTriangle, Loader2 } from "lucide-react"
+import { Download, TrendingUp, Package, Users, Target, AlertTriangle, Loader2, Calendar } from "lucide-react"
 import { formatCurrency, formatNumber, formatDate } from "@/lib/api-helpers"
 
 interface MonthlyData {
@@ -63,12 +65,55 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
   const [monthlyData, setMonthlyData] = useState<MonthlyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeframe, setTimeframe] = useState<"week" | "month" | "quarter" | "year">("month")
+  const [dateRangeMode, setDateRangeMode] = useState<"month" | "60days" | "90days" | "custom">("month")
+  const [customStartDate, setCustomStartDate] = useState("")
+  const [customEndDate, setCustomEndDate] = useState("")
+
+  const getDateRange = () => {
+    const today = new Date()
+    
+    switch (dateRangeMode) {
+      case "month":
+        // Use selectedMonth (e.g., "2025-10" for October 2025)
+        const startDate = new Date(selectedMonth + "-01")
+        const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0)
+        return { startDate, endDate }
+      
+      case "60days":
+        const end60 = new Date(today)
+        const start60 = new Date(today)
+        start60.setDate(start60.getDate() - 60)
+        return { startDate: start60, endDate: end60 }
+      
+      case "90days":
+        const end90 = new Date(today)
+        const start90 = new Date(today)
+        start90.setDate(start90.getDate() - 90)
+        return { startDate: start90, endDate: end90 }
+      
+      case "custom":
+        if (customStartDate && customEndDate) {
+          return {
+            startDate: new Date(customStartDate),
+            endDate: new Date(customEndDate)
+          }
+        }
+        // Fallback to current month if custom dates not set
+        const fallbackStart = new Date(selectedMonth + "-01")
+        const fallbackEnd = new Date(fallbackStart.getFullYear(), fallbackStart.getMonth() + 1, 0)
+        return { startDate: fallbackStart, endDate: fallbackEnd }
+      
+      default:
+        const defaultStart = new Date(selectedMonth + "-01")
+        const defaultEnd = new Date(defaultStart.getFullYear(), defaultStart.getMonth() + 1, 0)
+        return { startDate: defaultStart, endDate: defaultEnd }
+    }
+  }
 
   const fetchMonthlyData = async () => {
     try {
       setLoading(true)
-      const startDate = new Date(selectedMonth + "-01")
-      const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0)
+      const { startDate, endDate } = getDateRange()
 
       const response = await fetch(
         `/api/analytics/monthly?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`,
@@ -89,13 +134,21 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
 
   useEffect(() => {
     fetchMonthlyData()
-  }, [selectedMonth])
+  }, [selectedMonth, dateRangeMode, customStartDate, customEndDate])
 
   const exportReport = () => {
     if (!monthlyData) return
 
+    const { startDate, endDate } = getDateRange()
+    const dateRangeLabel = `${formatDate(startDate)}_to_${formatDate(endDate)}`
+
     const reportData = {
-      period: selectedMonth,
+      period: dateRangeMode === "month" ? selectedMonth : dateRangeLabel,
+      dateRange: {
+        start: formatDate(startDate),
+        end: formatDate(endDate),
+        mode: dateRangeMode
+      },
       timeframe,
       generatedAt: new Date().toISOString(),
       summary: monthlyData.summary,
@@ -104,13 +157,14 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
       production: monthlyData.production,
       financial: monthlyData.financial,
       rawMaterials: monthlyData.rawMaterials,
+      recovery: recoverySummary,
     }
 
     const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `manufacturing-report-${selectedMonth}-${timeframe}.json`
+    a.download = `manufacturing-report-${dateRangeLabel}-${timeframe}.json`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -165,10 +219,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
       {/* Report Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">
-            Manufacturing Reports -{" "}
-            {new Date(selectedMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-          </h2>
+          <h2 className="text-2xl font-bold text-slate-900">Manufacturing Reports</h2>
           <p className="text-slate-600">Comprehensive analysis of manufacturing operations and profitability</p>
         </div>
         <div className="flex gap-2">
@@ -192,6 +243,95 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
           </Button>
         </div>
       </div>
+
+      {/* Date Range Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            Date Range Selection
+          </CardTitle>
+          <CardDescription>Choose a time period for your report</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {/* Date Range Mode Selector */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={dateRangeMode === "month" ? "default" : "outline"}
+                onClick={() => setDateRangeMode("month")}
+                size="sm"
+              >
+                Current Month
+              </Button>
+              <Button
+                variant={dateRangeMode === "60days" ? "default" : "outline"}
+                onClick={() => setDateRangeMode("60days")}
+                size="sm"
+              >
+                Last 60 Days
+              </Button>
+              <Button
+                variant={dateRangeMode === "90days" ? "default" : "outline"}
+                onClick={() => setDateRangeMode("90days")}
+                size="sm"
+              >
+                Last 90 Days
+              </Button>
+              <Button
+                variant={dateRangeMode === "custom" ? "default" : "outline"}
+                onClick={() => setDateRangeMode("custom")}
+                size="sm"
+              >
+                Custom Range
+              </Button>
+            </div>
+
+            {/* Custom Date Range Inputs */}
+            {dateRangeMode === "custom" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    max={customEndDate || undefined}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endDate">End Date</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    min={customStartDate || undefined}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Display Selected Range */}
+            <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
+              <strong>Selected Period:</strong>{" "}
+              {(() => {
+                const { startDate, endDate } = getDateRange()
+                return `${startDate.toLocaleDateString("en-US", { 
+                  month: "short", 
+                  day: "numeric", 
+                  year: "numeric" 
+                })} - ${endDate.toLocaleDateString("en-US", { 
+                  month: "short", 
+                  day: "numeric", 
+                  year: "numeric" 
+                })}`
+              })()}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="space-y-8">
         {/* Overview Section */}

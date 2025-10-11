@@ -572,6 +572,18 @@ export default function Dashboard() {
                     <span>Financial</span>
                   </button>
 
+<button
+                    onClick={() => setActiveTab("recovery")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "recovery"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Wallet className="w-5 h-5" />
+                    <span>Recovery</span>
+                  </button>
+
                   <button
                     onClick={() => setActiveTab("reports")}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
@@ -584,17 +596,7 @@ export default function Dashboard() {
                     <span>Reports</span>
                   </button>
 
-                  <button
-                    onClick={() => setActiveTab("recovery")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "recovery"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Wallet className="w-5 h-5" />
-                    <span>Recovery</span>
-                  </button>
+                  
                 </nav>
               </div>
             </aside>
