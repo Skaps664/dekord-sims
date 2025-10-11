@@ -1,6 +1,5 @@
 Migration notes: Neon -> MongoDB
 
-What I changed
 
 - Removed `@neondatabase/serverless` from `package.json` and added `mongodb` dependency.
 - Replaced `lib/database.ts` implementation to use MongoDB. It exposes the same `DatabaseClient` class and methods.
