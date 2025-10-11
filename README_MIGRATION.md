@@ -40,6 +40,5 @@ Notes and next steps
 - I ran TypeScript checks and fixed type issues produced by the DB migration. Some unrelated TypeScript errors in UI components (props/types for charts and components) existed before and are unrelated to the DB migration — I did not modify their behavior.
 - If you want, I can wire a data migration script to import your existing Postgres/Neon data into MongoDB. That requires access to the existing database dump or connection string.
 
-If you'd like, I can now:
-- Add a small test script that inserts a sample product and verifies inventory relations.
+If you'd like, I can now:elations.
 - Implement a one-time data migration helper (requires source DB access).
