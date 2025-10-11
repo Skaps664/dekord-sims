@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Package,
   Users,
@@ -17,6 +16,14 @@ import {
   TrendingUp,
   BarChart3,
   ArrowLeft,
+  LayoutDashboard,
+  Box,
+  Boxes,
+  PackageCheck,
+  FileText,
+  Menu,
+  X,
+  Wallet,
 } from "lucide-react"
 import { InventoryTable } from "@/components/inventory-table"
 import { AddItemDialog } from "@/components/add-item-dialog"
@@ -28,6 +35,7 @@ import { ProductionAccounting } from "@/components/production-accounting"
 import { ProductsManagement } from "@/components/products-management" // Added ProductsManagement component
 import { AnalyticsDashboard } from "@/components/analytics-dashboard" // Added AnalyticsDashboard component
 import { ImportProductionDialog } from "@/components/import-production-dialog" // Added ImportProductionDialog component
+import { RecoveryManagement } from "@/components/recovery-management" // Added RecoveryManagement component
 
 interface Product {
   id: string
@@ -136,6 +144,9 @@ export default function Dashboard() {
   const [showLeaderboard, setShowLeaderboard] = useState(false) // Added state to control leaderboard view
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("overview") // Added state for active tab
+  const [sidebarOpen, setSidebarOpen] = useState(false) // Added state for mobile sidebar
+  const [recoverySummary, setRecoverySummary] = useState<any>(null) // Added state for recovery summary
 
   useEffect(() => {
     loadData()
@@ -146,11 +157,12 @@ export default function Dashboard() {
       setLoading(true)
       setError(null)
 
-      const [inventoryRes, productsRes, distributionsRes, productionBatchesRes] = await Promise.all([
+      const [inventoryRes, productsRes, distributionsRes, productionBatchesRes, recoveryRes] = await Promise.all([
         fetch("/api/inventory"),
         fetch("/api/products"),
         fetch("/api/distributions"),
         fetch("/api/production-batches"),
+        fetch("/api/recovery-summary"),
       ])
 
       if (!inventoryRes.ok || !productsRes.ok || !distributionsRes.ok || !productionBatchesRes.ok) {
@@ -161,6 +173,7 @@ export default function Dashboard() {
       const productsData = await productsRes.json()
       const distributionsData = await distributionsRes.json()
       const productionBatchesData = await productionBatchesRes.json()
+      const recoveryData = recoveryRes.ok ? await recoveryRes.json() : null
 
       if (inventoryData.requiresSetup || productsData.requiresSetup || distributionsData.requiresSetup) {
         setError("Database setup required. Please run the setup scripts first.")
@@ -172,6 +185,7 @@ export default function Dashboard() {
       setProducts(productsData.data || [])
       setDistributions(distributionsData.data || [])
       setProductionBatches(productionBatchesData.data || [])
+      setRecoverySummary(recoveryData?.data || null)
     } catch (error) {
       console.error("Error loading data:", error)
       setError("Failed to connect to database. Please check your database connection and try again.")
@@ -469,25 +483,295 @@ export default function Dashboard() {
         {showLeaderboard ? (
           <AnalyticsDashboard open={true} onOpenChange={() => {}} distributions={distributions} />
         ) : (
-          <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-8">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="products">Products</TabsTrigger>
-              <TabsTrigger value="raw-materials">Raw Materials</TabsTrigger>
-              <TabsTrigger value="production">Production</TabsTrigger>
-              <TabsTrigger value="ready">Ready</TabsTrigger>
-              <TabsTrigger value="distributions">Distributions</TabsTrigger>
-              <TabsTrigger value="financial">Financial</TabsTrigger>
-              <TabsTrigger value="reports">Reports</TabsTrigger>
-            </TabsList>
+          <div className="flex gap-6">
+            {/* Sidebar Navigation */}
+            <aside className="hidden lg:block w-64 flex-shrink-0">
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 sticky top-6">
+                <nav className="space-y-1">
+                  <button
+                    onClick={() => setActiveTab("overview")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "overview"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <LayoutDashboard className="w-5 h-5" />
+                    <span>Overview</span>
+                  </button>
 
-            <TabsContent value="overview">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-slate-900">
-                  Monthly Overview -{" "}
-                  {new Date(selectedMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                </h2>
+                  <button
+                    onClick={() => setActiveTab("products")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "products"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Box className="w-5 h-5" />
+                    <span>Products</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("raw-materials")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "raw-materials"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Boxes className="w-5 h-5" />
+                    <span>Raw Materials</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("production")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "production"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Factory className="w-5 h-5" />
+                    <span>Production</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("ready")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "ready"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <PackageCheck className="w-5 h-5" />
+                    <span>Ready</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("distributions")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "distributions"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <ShoppingCart className="w-5 h-5" />
+                    <span>Distributions</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("financial")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "financial"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <DollarSign className="w-5 h-5" />
+                    <span>Financial</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("reports")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "reports"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <FileText className="w-5 h-5" />
+                    <span>Reports</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("recovery")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "recovery"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Wallet className="w-5 h-5" />
+                    <span>Recovery</span>
+                  </button>
+                </nav>
               </div>
+            </aside>
+
+            {/* Mobile Sidebar Toggle */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="lg:hidden fixed bottom-6 right-6 z-50 bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-all"
+            >
+              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+
+            {/* Mobile Sidebar Overlay */}
+            {sidebarOpen && (
+              <div
+                className="lg:hidden fixed inset-0 bg-black/50 z-40"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+
+            {/* Mobile Sidebar */}
+            <aside
+              className={`lg:hidden fixed top-0 left-0 bottom-0 w-64 bg-white z-50 transform transition-transform duration-300 ${
+                sidebarOpen ? "translate-x-0" : "-translate-x-full"
+              }`}
+            >
+              <div className="p-4 border-b border-slate-200">
+                <h2 className="font-semibold text-lg text-slate-900">Navigation</h2>
+              </div>
+              <nav className="p-4 space-y-1">
+                <button
+                  onClick={() => {
+                    setActiveTab("overview")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "overview"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                  <span>Overview</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("products")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "products"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <Box className="w-5 h-5" />
+                  <span>Products</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("raw-materials")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "raw-materials"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <Boxes className="w-5 h-5" />
+                  <span>Raw Materials</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("production")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "production"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <Factory className="w-5 h-5" />
+                  <span>Production</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("ready")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "ready"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <PackageCheck className="w-5 h-5" />
+                  <span>Ready</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("distributions")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "distributions"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  <span>Distributions</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("financial")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "financial"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <DollarSign className="w-5 h-5" />
+                  <span>Financial</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("reports")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "reports"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <FileText className="w-5 h-5" />
+                  <span>Reports</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("recovery")
+                    setSidebarOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === "recovery"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <Wallet className="w-5 h-5" />
+                  <span>Recovery</span>
+                </button>
+              </nav>
+            </aside>
+
+            {/* Main Content Area */}
+            <div className="flex-1 min-w-0">
+              {activeTab === "overview" && (
+                <div>
+                  <div className="mb-4">
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      Monthly Overview -{" "}
+                      {new Date(selectedMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                    </h2>
+                  </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <Card>
@@ -533,6 +817,45 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="text-2xl font-bold text-slate-900">{totalBatchesProduced}</div>
                     <p className="text-xs text-slate-500">Batches this month</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Total Recovered</CardTitle>
+                    <Wallet className="h-4 w-4 text-green-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-slate-900">
+                      ${(recoverySummary?.totalRecovered || 0).toLocaleString()}
+                    </div>
+                    <p className="text-xs text-slate-500">Payment collections</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-slate-900">
+                      ${(recoverySummary?.totalOutstanding || 0).toLocaleString()}
+                    </div>
+                    <p className="text-xs text-slate-500">Pending payments</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Recovery Rate</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-blue-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {(recoverySummary?.recoveryRate || 0).toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-slate-500">Collection efficiency</p>
                   </CardContent>
                 </Card>
               </div>
@@ -698,18 +1021,19 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
-            </TabsContent>
+                </div>
+              )}
 
-            <TabsContent value="products">
-              <ProductsManagement
-                products={products}
-                onAddProduct={addProduct}
-                onUpdateProduct={updateProduct}
-                onDeleteProduct={deleteProduct}
-              />
-            </TabsContent>
+              {activeTab === "products" && (
+                <ProductsManagement
+                  products={products}
+                  onAddProduct={addProduct}
+                  onUpdateProduct={updateProduct}
+                  onDeleteProduct={deleteProduct}
+                />
+              )}
 
-            <TabsContent value="raw-materials">
+              {activeTab === "raw-materials" && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -740,42 +1064,42 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
-            </TabsContent>
+              )}
 
-            <TabsContent value="ready">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-900">Ready Products</h2>
-                    <p className="text-slate-600">Finished products ready for distribution</p>
+              {activeTab === "ready" && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-slate-900">Ready Products</h2>
+                      <p className="text-slate-600">Finished products ready for distribution</p>
+                    </div>
+                    <Button onClick={() => setShowImportDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+                      <Package className="w-4 h-4 mr-2" />
+                      Import from Production
+                    </Button>
                   </div>
-                  <Button onClick={() => setShowImportDialog(true)} className="bg-blue-600 hover:bg-blue-700">
-                    <Package className="w-4 h-4 mr-2" />
-                    Import from Production
-                  </Button>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <ShoppingCart className="h-5 w-5 text-green-600" />
+                        Finished Products Ready for Distribution
+                      </CardTitle>
+                      <CardDescription>Products completed from production batches and ready to sell</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <InventoryTable
+                        inventory={finishedProducts}
+                        setInventory={setInventory}
+                        showTypeFilter={false}
+                        inventoryType="finished"
+                      />
+                    </CardContent>
+                  </Card>
                 </div>
+              )}
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingCart className="h-5 w-5 text-green-600" />
-                      Finished Products Ready for Distribution
-                    </CardTitle>
-                    <CardDescription>Products completed from production batches and ready to sell</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <InventoryTable
-                      inventory={finishedProducts}
-                      setInventory={setInventory}
-                      showTypeFilter={false}
-                      inventoryType="finished"
-                    />
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="distributions">
+              {activeTab === "distributions" && (
               <Card>
                 <CardHeader>
                   <CardTitle>Distribution Management</CardTitle>
@@ -796,36 +1120,38 @@ export default function Dashboard() {
                   />
                 </CardContent>
               </Card>
-            </TabsContent>
+              )}
 
-            <TabsContent value="production">
-              <ProductionAccounting
-                inventory={inventory}
-                products={products}
-                selectedMonth={selectedMonth}
-                onBatchCreated={handleBatchCreated}
-                productionBatches={productionBatches}
-              />
-            </TabsContent>
+              {activeTab === "production" && (
+                <ProductionAccounting
+                  inventory={inventory}
+                  products={products}
+                  selectedMonth={selectedMonth}
+                  onBatchCreated={handleBatchCreated}
+                  productionBatches={productionBatches}
+                />
+              )}
 
-            <TabsContent value="financial">
-              <FinancialOverview
-                inventory={inventory}
-                distributions={filteredDistributions}
-                selectedMonth={selectedMonth}
-                productionBatches={productionBatches}
-              />
-            </TabsContent>
+              {activeTab === "financial" && (
+                <FinancialOverview
+                  inventory={inventory}
+                  distributions={filteredDistributions}
+                  selectedMonth={selectedMonth}
+                  productionBatches={productionBatches}
+                  recoverySummary={recoverySummary}
+                />
+              )}
 
-            <TabsContent value="reports">
-              <MonthlyReports
-                inventory={inventory}
-                distributions={distributions}
-                selectedMonth={selectedMonth}
-                productionBatches={productionBatches}
-              />
-            </TabsContent>
-          </Tabs>
+              {activeTab === "reports" && (
+                <MonthlyReports
+                  selectedMonth={selectedMonth}
+                  recoverySummary={recoverySummary}
+                />
+              )}
+
+              {activeTab === "recovery" && <RecoveryManagement distributions={distributions} />}
+            </div>
+          </div>
         )}
       </div>
 

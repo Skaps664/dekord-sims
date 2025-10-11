@@ -96,11 +96,27 @@ interface ProductionBatch {
   cost_per_unit?: number
 }
 
+interface RecoverySummary {
+  totalDistributed: number
+  totalRecovered: number
+  totalOutstanding: number
+  recoveryRate: number
+  recipients: {
+    recipientName: string
+    recipientType: string
+    totalDistributed: number
+    totalRecovered: number
+    totalOutstanding: number
+    distributionCount: number
+  }[]
+}
+
 interface FinancialOverviewProps {
   inventory: InventoryItem[]
   distributions: Distribution[]
   selectedMonth: string
   productionBatches: ProductionBatch[] // Added production batches for cost analysis
+  recoverySummary?: RecoverySummary | null
 }
 
 export function FinancialOverview({
@@ -108,6 +124,7 @@ export function FinancialOverview({
   distributions,
   selectedMonth,
   productionBatches,
+  recoverySummary,
 }: FinancialOverviewProps) {
   // Filter inventory by type using actual database field
   const finishedProducts = inventory.filter((item) => 
@@ -443,6 +460,66 @@ export function FinancialOverview({
                   </div>
                 )
               })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payment Recovery Section */}
+      {recoverySummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Recovery Overview</CardTitle>
+            <CardDescription>Cash flow and outstanding payments tracking</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">
+                  ${recoverySummary.totalRecovered.toLocaleString()}
+                </div>
+                <div className="text-sm text-green-700">Total Recovered</div>
+              </div>
+              <div className="text-center p-4 bg-amber-50 rounded-lg">
+                <div className="text-2xl font-bold text-amber-600">
+                  ${recoverySummary.totalOutstanding.toLocaleString()}
+                </div>
+                <div className="text-sm text-amber-700">Outstanding</div>
+              </div>
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {recoverySummary.recoveryRate.toFixed(1)}%
+                </div>
+                <div className="text-sm text-blue-700">Recovery Rate</div>
+              </div>
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600">
+                  ${recoverySummary.totalDistributed.toLocaleString()}
+                </div>
+                <div className="text-sm text-purple-700">Total Distributed</div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-slate-700 mb-2">Top Outstanding Recipients</h4>
+              {recoverySummary.recipients
+                .sort((a, b) => b.totalOutstanding - a.totalOutstanding)
+                .slice(0, 5)
+                .map((recipient) => (
+                  <div key={recipient.recipientName} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">{recipient.recipientName}</div>
+                      <div className="text-sm text-slate-600">
+                        {recipient.recipientType.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())} • {recipient.distributionCount} distributions
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-amber-600">${recipient.totalOutstanding.toLocaleString()}</div>
+                      <div className="text-sm text-slate-500">
+                        ${recipient.totalRecovered.toLocaleString()} recovered
+                      </div>
+                    </div>
+                  </div>
+                ))}
             </div>
           </CardContent>
         </Card>

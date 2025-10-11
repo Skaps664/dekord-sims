@@ -39,11 +39,27 @@ interface MonthlyData {
   }
 }
 
-interface MonthlyReportsProps {
-  selectedMonth: string
+interface RecoverySummary {
+  totalDistributed: number
+  totalRecovered: number
+  totalOutstanding: number
+  recoveryRate: number
+  recipients: {
+    recipientName: string
+    recipientType: string
+    totalDistributed: number
+    totalRecovered: number
+    totalOutstanding: number
+    distributionCount: number
+  }[]
 }
 
-export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
+interface MonthlyReportsProps {
+  selectedMonth: string
+  recoverySummary?: RecoverySummary | null
+}
+
+export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReportsProps) {
   const [monthlyData, setMonthlyData] = useState<MonthlyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeframe, setTimeframe] = useState<"week" | "month" | "quarter" | "year">("month")
@@ -256,6 +272,66 @@ export function MonthlyReports({ selectedMonth }: MonthlyReportsProps) {
               </CardContent>
             </Card>
           </div>
+
+          {/* Payment Recovery Metrics */}
+          {recoverySummary && (
+            <>
+              <h4 className="text-lg font-semibold text-slate-800 mt-6 mb-4">Payment Recovery</h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Total Recovered</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {formatCurrency(recoverySummary.totalRecovered)}
+                    </div>
+                    <p className="text-xs text-slate-500">Payment collections</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-amber-600">
+                      {formatCurrency(recoverySummary.totalOutstanding)}
+                    </div>
+                    <p className="text-xs text-slate-500">Pending payments</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Recovery Rate</CardTitle>
+                    <Target className="h-4 w-4 text-blue-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {recoverySummary.recoveryRate.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-slate-500">Collection efficiency</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-slate-600">Distributed Value</CardTitle>
+                    <Package className="h-4 w-4 text-purple-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {formatCurrency(recoverySummary.totalDistributed)}
+                    </div>
+                    <p className="text-xs text-slate-500">Total distributed</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Profitability Section */}

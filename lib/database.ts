@@ -722,6 +722,136 @@ export class DatabaseClient {
       profitMargin: totalRevenue > 0 ? ((totalRevenue - totalProductionCost) / totalRevenue * 100) : 0
     }
   }
+
+  // ==================== PAYMENT RECOVERY TRACKING ====================
+
+  static async getPayments() {
+    const database = await connect()
+    const payments = await database.collection('payments').find({}).sort({ payment_date: -1 }).toArray()
+    return payments.map(p => ({ ...p, id: p.id || p._id.toString() }))
+  }
+
+  static async createPayment(data: any) {
+    const database = await connect()
+    const id = await getNextSequence('paymentId')
+    
+    const payment = {
+      id,
+      distribution_id: data.distribution_id,
+      recipient_name: data.recipient_name,
+      recipient_type: data.recipient_type || 'distributor',
+      amount_paid: parseFloat(data.amount_paid) || 0,
+      payment_date: data.payment_date || nowISO(),
+      payment_method: data.payment_method || 'cash',
+      proof_image_url: data.proof_image_url || null,
+      notes: data.notes || '',
+      created_at: nowISO(),
+      updated_at: nowISO()
+    }
+    
+    await database.collection('payments').insertOne(payment)
+    return payment
+  }
+
+  static async updatePayment(paymentId: string | number, updates: any) {
+    const database = await connect()
+    const id = typeof paymentId === 'string' ? parseInt(paymentId) : paymentId
+    
+    const updateData = {
+      ...updates,
+      updated_at: nowISO()
+    }
+    
+    await database.collection('payments').updateOne(
+      { id },
+      { $set: updateData }
+    )
+    
+    return { id, ...updateData }
+  }
+
+  static async deletePayment(paymentId: string | number) {
+    const database = await connect()
+    const id = typeof paymentId === 'string' ? parseInt(paymentId) : paymentId
+    await database.collection('payments').deleteOne({ id })
+    return { success: true }
+  }
+
+  static async getPaymentsByDistribution(distributionId: string | number) {
+    const database = await connect()
+    const id = typeof distributionId === 'string' ? parseInt(distributionId) : distributionId
+    const payments = await database.collection('payments')
+      .find({ distribution_id: id })
+      .sort({ payment_date: -1 })
+      .toArray()
+    return payments.map(p => ({ ...p, id: p.id || p._id.toString() }))
+  }
+
+  static async getPaymentsByRecipient(recipientName: string) {
+    const database = await connect()
+    const payments = await database.collection('payments')
+      .find({ recipient_name: recipientName })
+      .sort({ payment_date: -1 })
+      .toArray()
+    return payments.map(p => ({ ...p, id: p.id || p._id.toString() }))
+  }
+
+  static async getRecoverySummary() {
+    const database = await connect()
+    const distributions = await this.getDistributions()
+    const payments = await this.getPayments()
+    
+    // Calculate total distributed amount
+    const totalDistributed = distributions.reduce((sum: number, d: any) => 
+      sum + (d.total_amount || 0), 0
+    )
+    
+    // Calculate total recovered amount
+    const totalRecovered = payments.reduce((sum: number, p: any) => 
+      sum + (p.amount_paid || 0), 0
+    )
+    
+    // Calculate outstanding by recipient
+    const recipientSummary = new Map()
+    
+    distributions.forEach((dist: any) => {
+      const recipient = dist.recipient_name || 'Unknown'
+      if (!recipientSummary.has(recipient)) {
+        recipientSummary.set(recipient, {
+          recipient_name: recipient,
+          recipient_type: dist.recipientType || 'distributor',
+          total_distributed: 0,
+          total_paid: 0,
+          outstanding: 0,
+          distribution_count: 0
+        })
+      }
+      const summary = recipientSummary.get(recipient)
+      summary.total_distributed += (dist.total_amount || 0)
+      summary.distribution_count += 1
+    })
+    
+    payments.forEach((payment: any) => {
+      const recipient = payment.recipient_name
+      if (recipientSummary.has(recipient)) {
+        const summary = recipientSummary.get(recipient)
+        summary.total_paid += (payment.amount_paid || 0)
+      }
+    })
+    
+    // Calculate outstanding for each recipient
+    recipientSummary.forEach((summary) => {
+      summary.outstanding = summary.total_distributed - summary.total_paid
+    })
+    
+    return {
+      totalDistributed,
+      totalRecovered,
+      totalOutstanding: totalDistributed - totalRecovered,
+      recoveryRate: totalDistributed > 0 ? (totalRecovered / totalDistributed) * 100 : 0,
+      recipients: Array.from(recipientSummary.values())
+    }
+  }
 }
 
 export default DatabaseClient
