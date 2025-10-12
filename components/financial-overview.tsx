@@ -134,10 +134,10 @@ export function FinancialOverview({
     item.item_type === "raw_material" || item.inventoryType === "raw"
   )
 
-  // Calculate inventory values
+  // Calculate inventory values - use quantity (real-time) not current_stock (original)
   const totalFinishedProductsValue = finishedProducts.reduce(
     (sum, item) => {
-      const quantity = item.quantity || item.current_stock || 0
+      const quantity = item.quantity || 0  // Only use quantity - updated by distributions
       const price = item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0
       return sum + quantity * price
     },
@@ -145,7 +145,7 @@ export function FinancialOverview({
   )
   
   const totalRawMaterialsValue = rawMaterials.reduce((sum, item) => {
-    const quantity = item.quantity || item.current_stock || 0
+    const quantity = item.quantity || 0  // Only use quantity - real-time value
     const cost = item.unit_cost || item.unitCost || 0
     return sum + quantity * cost
   }, 0)
@@ -204,7 +204,7 @@ export function FinancialOverview({
 
   const topItems = inventory
     .map((item) => {
-      const quantity = item.quantity || item.current_stock || 0
+      const quantity = item.quantity || 0  // Only use real-time quantity
       const isFinished = item.item_type === "finished_product" || item.inventoryType === "finished"
       const price = isFinished 
         ? (item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0)
@@ -217,11 +217,12 @@ export function FinancialOverview({
     .sort((a, b) => b.totalValue - a.totalValue)
     .slice(0, 5)
 
+  // Group by recipient NAME not type (since recipientType field doesn't exist)
   const recipientTypeBreakdown = completedDistributions.reduce(
     (acc, dist) => {
-      const type = dist.recipientType || 'unknown'
+      const recipientName = dist.recipient_name || dist.recipient || 'Unknown'
       const value = dist.total_amount || dist.totalValue || 0
-      acc[type] = (acc[type] || 0) + value
+      acc[recipientName] = (acc[recipientName] || 0) + value
       return acc
     },
     {} as Record<string, number>,
@@ -229,20 +230,20 @@ export function FinancialOverview({
 
   const recipientProfitBreakdown = completedDistributions.reduce(
     (acc, dist) => {
-      const type = dist.recipientType || 'unknown'
-      if (!acc[type]) {
-        acc[type] = { revenue: 0, profit: 0, orders: 0 }
+      const recipientName = dist.recipient_name || dist.recipient || 'Unknown'
+      if (!acc[recipientName]) {
+        acc[recipientName] = { revenue: 0, profit: 0, orders: 0 }
       }
-      acc[type].revenue += (dist.total_amount || dist.totalValue || 0)
-      acc[type].profit += (dist.gross_profit || dist.totalProfit || 0)
-      acc[type].orders += 1
+      acc[recipientName].revenue += (dist.total_amount || dist.totalValue || 0)
+      acc[recipientName].profit += (dist.gross_profit || dist.totalProfit || 0)
+      acc[recipientName].orders += 1
       return acc
     },
     {} as Record<string, { revenue: number; profit: number; orders: number }>,
   )
 
   const lowStockItems = inventory.filter((item) => {
-    const quantity = item.quantity || item.current_stock || 0
+    const quantity = item.quantity || 0  // Real-time quantity only
     const minStock = item.minimum_stock || item.minStock || 0
     return quantity <= minStock && minStock > 0
   })
@@ -264,9 +265,9 @@ export function FinancialOverview({
             <Package className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">${totalInventoryValue.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">
-              Products: ${totalFinishedProductsValue.toLocaleString()} | Materials: $
+            <div className="text-2xl font-bold text-slate-900">Rs {totalInventoryValue.toLocaleString()}</div>
+            <p className="text-xs text-slate-500 mt-1">
+              Products: Rs {totalFinishedProductsValue.toLocaleString()} | Materials: Rs
               {totalRawMaterialsValue.toLocaleString()}
             </p>
           </CardContent>
@@ -278,7 +279,7 @@ export function FinancialOverview({
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">${totalRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-slate-900">Rs {totalRevenue.toLocaleString()}</div>
             <p className="text-xs text-slate-500">From {completedDistributions.length} distributions</p>
           </CardContent>
         </Card>
@@ -290,7 +291,7 @@ export function FinancialOverview({
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
-              ${totalProfit.toLocaleString()}
+              Rs {totalProfit.toLocaleString()}
             </div>
             <p className="text-xs text-slate-500">Margin: {profitMargin.toFixed(1)}%</p>
           </CardContent>
@@ -302,8 +303,8 @@ export function FinancialOverview({
             <Factory className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">${totalProductionCost.toLocaleString()}</div>
-            <p className="text-xs text-slate-500">${avgProductionCostPerUnit.toFixed(2)}/unit avg</p>
+            <div className="text-2xl font-bold text-slate-900">Rs {totalProductionCost.toLocaleString()}</div>
+            <p className="text-xs text-slate-500">Rs {avgProductionCostPerUnit.toFixed(2)}/unit avg</p>
           </CardContent>
         </Card>
 
@@ -313,7 +314,7 @@ export function FinancialOverview({
             <ShoppingCart className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">${pendingValue.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-slate-900">Rs {pendingValue.toLocaleString()}</div>
             <p className="text-xs text-slate-500">Awaiting completion</p>
           </CardContent>
         </Card>
@@ -373,7 +374,7 @@ export function FinancialOverview({
                       <span className="text-sm font-medium">{category}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium">${value.toLocaleString()}</div>
+                      <div className="text-sm font-medium">Rs {value.toLocaleString()}</div>
                       <div className="text-xs text-slate-500">{percentage.toFixed(1)}%</div>
                     </div>
                   </div>
@@ -386,26 +387,25 @@ export function FinancialOverview({
         <Card>
           <CardHeader>
             <CardTitle>Profitability by Channel</CardTitle>
-            <CardDescription>Profit analysis by recipient type</CardDescription>
+            <CardDescription>Profit analysis by recipient name</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {Object.entries(recipientProfitBreakdown)
                 .sort(([, a], [, b]) => b.profit - a.profit)
-                .map(([type, data]) => {
+                .map(([recipientName, data]) => {
                   const profitMargin = data.revenue > 0 ? (data.profit / data.revenue) * 100 : 0
-                  const displayName = type.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
                   return (
-                    <div key={type} className="flex items-center justify-between">
+                    <div key={recipientName} className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <div className="w-3 h-3 bg-purple-600 rounded-full"></div>
                         <div>
-                          <span className="text-sm font-medium">{displayName}</span>
+                          <span className="text-sm font-medium">{recipientName}</span>
                           <div className="text-xs text-slate-500">{data.orders} orders</div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium text-green-600">${data.profit.toLocaleString()}</div>
+                        <div className="text-sm font-medium text-green-600">Rs {data.profit.toLocaleString()}</div>
                         <div className="text-xs text-slate-500">{profitMargin.toFixed(1)}% margin</div>
                       </div>
                     </div>
@@ -429,11 +429,11 @@ export function FinancialOverview({
                 <div className="text-sm text-blue-700">Units Produced</div>
               </div>
               <div className="text-center p-4 bg-orange-50 rounded-lg">
-                <div className="text-2xl font-bold text-orange-600">${totalProductionCost.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-orange-600">Rs {totalProductionCost.toLocaleString()}</div>
                 <div className="text-sm text-orange-700">Total Production Cost</div>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">${avgProductionCostPerUnit.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-green-600">Rs {avgProductionCostPerUnit.toFixed(2)}</div>
                 <div className="text-sm text-green-700">Avg Cost Per Unit</div>
               </div>
             </div>
@@ -454,8 +454,8 @@ export function FinancialOverview({
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-medium">${totalCost.toLocaleString()}</div>
-                      <div className="text-sm text-slate-500">${costPerUnit.toFixed(2)}/unit</div>
+                      <div className="font-medium">Rs {totalCost.toLocaleString()}</div>
+                      <div className="text-sm text-slate-500">Rs {costPerUnit.toFixed(2)}/unit</div>
                     </div>
                   </div>
                 )
@@ -476,46 +476,46 @@ export function FinancialOverview({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">
-                  ${recoverySummary.totalRecovered.toLocaleString()}
+                  Rs {(recoverySummary?.totalRecovered || 0).toLocaleString()}
                 </div>
                 <div className="text-sm text-green-700">Total Recovered</div>
               </div>
               <div className="text-center p-4 bg-amber-50 rounded-lg">
                 <div className="text-2xl font-bold text-amber-600">
-                  ${recoverySummary.totalOutstanding.toLocaleString()}
+                  Rs {(recoverySummary?.totalOutstanding || 0).toLocaleString()}
                 </div>
                 <div className="text-sm text-amber-700">Outstanding</div>
               </div>
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
-                  {recoverySummary.recoveryRate.toFixed(1)}%
+                  {(recoverySummary?.recoveryRate || 0).toFixed(1)}%
                 </div>
                 <div className="text-sm text-blue-700">Recovery Rate</div>
               </div>
               <div className="text-center p-4 bg-purple-50 rounded-lg">
                 <div className="text-2xl font-bold text-purple-600">
-                  ${recoverySummary.totalDistributed.toLocaleString()}
+                  Rs {(recoverySummary?.totalDistributed || 0).toLocaleString()}
                 </div>
                 <div className="text-sm text-purple-700">Total Distributed</div>
               </div>
             </div>
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-slate-700 mb-2">Top Outstanding Recipients</h4>
-              {recoverySummary.recipients
-                .sort((a, b) => b.totalOutstanding - a.totalOutstanding)
+              {(recoverySummary?.recipients || [])
+                .sort((a, b) => (b.totalOutstanding || 0) - (a.totalOutstanding || 0))
                 .slice(0, 5)
                 .map((recipient) => (
                   <div key={recipient.recipientName} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                     <div>
                       <div className="font-medium">{recipient.recipientName}</div>
                       <div className="text-sm text-slate-600">
-                        {recipient.recipientType.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())} • {recipient.distributionCount} distributions
+                        {recipient.recipientType ? recipient.recipientType.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase()) : "Customer"} • {recipient.distributionCount || 0} distributions
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-medium text-amber-600">${recipient.totalOutstanding.toLocaleString()}</div>
+                      <div className="font-medium text-amber-600">Rs {(recipient.totalOutstanding || 0).toLocaleString()}</div>
                       <div className="text-sm text-slate-500">
-                        ${recipient.totalRecovered.toLocaleString()} recovered
+                        Rs {(recipient.totalRecovered || 0).toLocaleString()} recovered
                       </div>
                     </div>
                   </div>
@@ -547,9 +547,9 @@ export function FinancialOverview({
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-medium">${item.totalValue.toLocaleString()}</div>
+                  <div className="text-sm font-medium">Rs {item.totalValue.toLocaleString()}</div>
                   <div className="text-xs text-slate-500">
-                    {item.quantity || item.current_stock || 0} × $
+                    {item.quantity || item.current_stock || 0} × Rs
                     {item.item_type === "finished_product" || item.inventoryType === "finished" 
                       ? (item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0)
                       : (item.unit_cost || item.unitCost || 0)}

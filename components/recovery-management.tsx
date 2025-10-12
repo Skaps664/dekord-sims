@@ -171,6 +171,9 @@ export function RecoveryManagement({ distributions }: RecoveryManagementProps) {
     new Set(distributions.map((d) => d.recipient_name).filter(Boolean))
   )
 
+  console.log('[Recovery] Distributions count:', distributions.length)
+  console.log('[Recovery] Recipient options:', recipientOptions)
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -341,7 +344,7 @@ export function RecoveryManagement({ distributions }: RecoveryManagementProps) {
                   <TableCell>
                     <Badge variant="outline" className="capitalize">
                       <CreditCard className="w-3 h-3 mr-1" />
-                      {payment.payment_method}
+                      {payment.payment_method.replace("_", " ")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-medium text-green-600">
@@ -373,7 +376,7 @@ export function RecoveryManagement({ distributions }: RecoveryManagementProps) {
 
       {/* Add Payment Dialog */}
       <Dialog open={showAddPaymentDialog} onOpenChange={setShowAddPaymentDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Add a payment received from a distributor or customer</DialogDescription>

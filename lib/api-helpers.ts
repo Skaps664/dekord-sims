@@ -86,14 +86,11 @@ export function formatDate(date: Date | string): string {
 }
 
 export function formatCurrency(amount?: number | string | null): string {
-  // Accept number, numeric-string, or undefined/null and return a safe formatted string.
-  if (amount === null || amount === undefined || amount === "") return "-"
-  const num = typeof amount === "string" ? Number.parseFloat(amount) : Number(amount)
-  if (isNaN(num)) return "-"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num)
+  const num = typeof amount === "string" ? parseFloat(amount) : amount || 0
+  return `Rs ${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(num)}`
 }
 
 export function formatNumber(num: number, decimals = 2): string {

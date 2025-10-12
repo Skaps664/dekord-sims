@@ -21,6 +21,11 @@ interface InventoryItem {
   current_stock: number
   minimum_stock?: number
   last_updated?: string
+  batch_id?: number
+  batch_number?: string
+  rejected_units?: number
+  production_date?: string
+  import_date?: string
 }
 
 interface InventoryTableProps {
@@ -166,8 +171,11 @@ export function InventoryTable({
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              {inventoryType === "finished" && <TableHead>Batch Info</TableHead>}
               <TableHead>Barcode</TableHead>
-              <TableHead>Quantity</TableHead>
+              <TableHead>Current Available</TableHead>
+              {inventoryType === "finished" && <TableHead>Total Produced</TableHead>}
+              {inventoryType === "finished" && <TableHead>Rejected</TableHead>}
               <TableHead>Status</TableHead>
               <TableHead>Unit Cost</TableHead>
               {inventoryType === "finished" && <TableHead>Selling Price</TableHead>}
@@ -177,36 +185,66 @@ export function InventoryTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredInventory.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell className="font-medium">{item.name}</TableCell>
-                <TableCell className="font-mono text-sm">{item.barcode || 'N/A'}</TableCell>
-                <TableCell>{item.quantity.toLocaleString()}</TableCell>
-                <TableCell>{getStockStatus(item.quantity, item.minimum_stock || 0)}</TableCell>
-                <TableCell className="text-green-600 font-medium">${item.unit_cost.toFixed(2)}</TableCell>
-                {inventoryType === "finished" && (
-                  <TableCell className="text-blue-600 font-medium">${item.selling_price?.toFixed(2) || "N/A"}</TableCell>
-                )}
-                {!compact && <TableCell>{item.supplier || 'N/A'}</TableCell>}
-                {!compact && <TableCell>{item.location}</TableCell>}
-                <TableCell>
-                  <div className="flex items-center space-x-2">
-                    <Button variant="ghost" size="sm" onClick={() => editItem(item)} disabled={loading}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteItem(item.id)}
-                      className="text-red-600 hover:text-red-700"
-                      disabled={loading}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            {filteredInventory.map((item) => {
+              // Database schema:
+              // - current_stock: Original accepted units from import (never changes)
+              // - quantity: Current available after distributions (decreases)
+              // - rejected_units: Failed QC units
+              const originalAccepted = item.current_stock || item.quantity || 0
+              const totalProduced = originalAccepted + (item.rejected_units || 0)
+              const currentAvailable = item.quantity
+              
+              return (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium">{item.name}</TableCell>
+                  {inventoryType === "finished" && (
+                    <TableCell className="text-sm">
+                      <div className="font-mono text-xs text-slate-600">
+                        {item.batch_number || 'N/A'}
+                      </div>
+                      {item.production_date && (
+                        <div className="text-xs text-slate-500">
+                          {new Date(item.production_date).toLocaleDateString()}
+                        </div>
+                      )}
+                    </TableCell>
+                  )}
+                  <TableCell className="font-mono text-sm">{item.barcode || 'N/A'}</TableCell>
+                  <TableCell className="font-semibold text-blue-600">{currentAvailable.toLocaleString()}</TableCell>
+                  {inventoryType === "finished" && (
+                    <TableCell className="text-slate-600">{totalProduced.toLocaleString()}</TableCell>
+                  )}
+                  {inventoryType === "finished" && (
+                    <TableCell className={item.rejected_units ? "text-red-600" : "text-slate-400"}>
+                      {item.rejected_units || 0}
+                    </TableCell>
+                  )}
+                  <TableCell>{getStockStatus(item.quantity, item.minimum_stock || 0)}</TableCell>
+                  <TableCell className="text-green-600 font-medium">${item.unit_cost.toFixed(2)}</TableCell>
+                  {inventoryType === "finished" && (
+                    <TableCell className="text-blue-600 font-medium">${item.selling_price?.toFixed(2) || "N/A"}</TableCell>
+                  )}
+                  {!compact && <TableCell>{item.supplier || 'N/A'}</TableCell>}
+                  {!compact && <TableCell>{item.location}</TableCell>}
+                  <TableCell>
+                    <div className="flex items-center space-x-2">
+                      <Button variant="ghost" size="sm" onClick={() => editItem(item)} disabled={loading}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteItem(item.id)}
+                        className="text-red-600 hover:text-red-700"
+                        disabled={loading}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>

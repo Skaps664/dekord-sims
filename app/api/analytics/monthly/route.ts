@@ -49,18 +49,36 @@ export async function GET(request: NextRequest) {
 
     // Enhance distributions with product names and calculate metrics
     const enhancedDistributions = filteredDistributions.map((dist: any) => {
-      const product = products.find((p: any) => 
-        p.id === dist.product_id || p.id === dist.productId
-      ) as any
+      // First, find the inventory item to get the product_id
+      const inventoryItem = inventory.find((inv: any) => 
+        inv.id === dist.inventory_item_id
+      )
+      
+      // Then find the product using the product_id from inventory
+      const product = inventoryItem ? products.find((p: any) => 
+        p.id === (inventoryItem as any).product_id || p.id === (inventoryItem as any).productId
+      ) : null
+      
+      const costPrice = (inventoryItem as any)?.unit_cost || 0
+      const unitPrice = dist.unit_price || 0
+      const quantity = dist.quantity || 0
+      
+      const costOfGoodsSold = costPrice * quantity
+      const totalValue = unitPrice * quantity
+      const grossProfit = totalValue - costOfGoodsSold
+      const profitMarginPercent = totalValue > 0 ? (grossProfit / totalValue) * 100 : 0
+      
+      // Use product name from product lookup, or inventory item name as fallback
+      const productName = (product as any)?.name || (inventoryItem as any)?.name || dist.product_name || 'Unknown Product'
+      
       return {
         ...dist,
-        product_name: product?.name || dist.product_name || 'Unknown Product',
-        total_value: dist.total_amount || dist.totalValue || 0,
-        cost_of_goods_sold: (dist.quantity || 0) * (dist.unit_cost || dist.unitCost || 0),
-        gross_profit: dist.gross_profit || dist.totalProfit || 0,
-        profit_margin_percent: dist.total_amount 
-          ? ((dist.gross_profit || 0) / dist.total_amount) * 100 
-          : 0
+        product_id: (inventoryItem as any)?.product_id || (inventoryItem as any)?.productId || dist.product_id,
+        product_name: productName,
+        total_value: totalValue,
+        cost_of_goods_sold: costOfGoodsSold,
+        gross_profit: grossProfit,
+        profit_margin_percent: profitMarginPercent
       }
     })
 
@@ -79,14 +97,19 @@ export async function GET(request: NextRequest) {
 
     // Process inventory with stock status
     const inventoryWithStatus = inventory.map((item: any) => {
-      const quantity = item.quantity || item.current_stock || 0
+      const quantity = item.quantity || 0  // Real-time quantity
       const minStock = item.minimum_stock || item.minStock || 0
       const unitCost = item.unit_cost || item.unitCost || 0
+      const sellingPrice = item.selling_price || item.sellingPrice || 0
+      
+      // For finished products use selling price, for raw materials use unit cost
+      const isFinished = item.item_type === "finished_product" || item.inventoryType === "finished"
+      const priceToUse = isFinished ? (sellingPrice || unitCost) : unitCost
       
       return {
         ...item,
         stock_status: quantity <= minStock ? "Low Stock" : "In Stock",
-        inventory_value: quantity * unitCost
+        inventory_value: quantity * priceToUse  // Use quantity, not current_stock
       }
     })
 
@@ -115,15 +138,32 @@ export async function GET(request: NextRequest) {
 
     const rawMaterialUsage = Array.from(rawMaterialUsageMap.values())
 
-    // Calculate summary metrics
-    const totalInventoryValue = inventoryWithStatus.reduce((sum: number, item: any) => 
-      sum + (item.inventory_value || 0), 0
+    // Calculate summary metrics using real-time quantity
+    const finishedProductsInInventory = inventoryWithStatus.filter((item: any) => 
+      item.item_type === "finished_product" || item.inventoryType === "finished"
     )
+    const rawMaterialsInInventory = inventoryWithStatus.filter((item: any) => 
+      item.item_type === "raw_material" || item.inventoryType === "raw"
+    )
+    
+    const totalFinishedValue = finishedProductsInInventory.reduce((sum: number, item: any) => {
+      const quantity = item.quantity || 0
+      const price = item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0
+      return sum + (quantity * price)
+    }, 0)
+    
+    const totalRawValue = rawMaterialsInInventory.reduce((sum: number, item: any) => {
+      const quantity = item.quantity || 0
+      const cost = item.unit_cost || item.unitCost || 0
+      return sum + (quantity * cost)
+    }, 0)
+    
+    const totalInventoryValue = totalFinishedValue + totalRawValue
     const totalRevenue = enhancedDistributions.reduce((sum: number, dist: any) => 
-      sum + (dist.total_amount || dist.totalValue || 0), 0
+      sum + (dist.total_value || 0), 0
     )
     const totalProfit = enhancedDistributions.reduce((sum: number, dist: any) => 
-      sum + (dist.gross_profit || dist.totalProfit || 0), 0
+      sum + (dist.gross_profit || 0), 0
     )
     const totalProductionCost = enhancedProduction.reduce((sum: number, batch: any) => 
       sum + (batch.total_cost || batch.totalCost || 0), 0

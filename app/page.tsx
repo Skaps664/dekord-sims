@@ -152,6 +152,13 @@ export default function Dashboard() {
     loadData()
   }, [])
 
+  // Reload data whenever tab changes for real-time updates
+  useEffect(() => {
+    if (activeTab !== "overview") {
+      loadData()
+    }
+  }, [activeTab])
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -183,7 +190,30 @@ export default function Dashboard() {
 
       setInventory(inventoryData.data || [])
       setProducts(productsData.data || [])
-      setDistributions(distributionsData.data || [])
+      
+      // Calculate profit for distributions
+      const distributionsWithProfit = (distributionsData.data || []).map((dist: any) => {
+        const inventoryItem = (inventoryData.data || []).find((inv: any) => inv.id === dist.inventory_item_id)
+        const costPrice = inventoryItem?.unit_cost || 0
+        const unitPrice = dist.unit_price || 0
+        const quantity = dist.quantity || 0
+        
+        const costOfGoodsSold = costPrice * quantity
+        const totalValue = unitPrice * quantity
+        const grossProfit = totalValue - costOfGoodsSold
+        const profitMarginPercent = totalValue > 0 ? (grossProfit / totalValue) * 100 : 0
+        
+        return {
+          ...dist,
+          cost_price: costPrice,
+          cost_of_goods_sold: costOfGoodsSold,
+          gross_profit: grossProfit,
+          profit_margin_percent: profitMarginPercent,
+          total_amount: totalValue
+        }
+      })
+      
+      setDistributions(distributionsWithProfit)
       setProductionBatches(productionBatchesData.data || [])
       setRecoverySummary(recoveryData?.data || null)
     } catch (error) {
@@ -278,10 +308,12 @@ export default function Dashboard() {
     await loadData()
   }
 
-  const handleDistributionCreated = (distribution: Distribution) => {
+  const handleDistributionCreated = async (distribution: Distribution) => {
+    // Reload all data to ensure inventory quantities are updated in real-time
+    await loadData()
+    
     // Only process if items exist (legacy format)
     if (!distribution.items || distribution.items.length === 0) {
-      setDistributions([...distributions, distribution])
       return
     }
     
@@ -561,18 +593,6 @@ export default function Dashboard() {
                   </button>
 
                   <button
-                    onClick={() => setActiveTab("financial")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "financial"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    <DollarSign className="w-5 h-5" />
-                    <span>Financial</span>
-                  </button>
-
-<button
                     onClick={() => setActiveTab("recovery")}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
                       activeTab === "recovery"
@@ -582,6 +602,19 @@ export default function Dashboard() {
                   >
                     <Wallet className="w-5 h-5" />
                     <span>Recovery</span>
+                  </button>
+
+
+                  <button
+                    onClick={() => setActiveTab("financial")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === "financial"
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <DollarSign className="w-5 h-5" />
+                    <span>Financial</span>
                   </button>
 
                   <button
@@ -805,7 +838,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-slate-900">
-                      ${monthlyDistributionValue.toLocaleString()}
+                      Rs {monthlyDistributionValue.toLocaleString()}
                     </div>
                     <p className="text-xs text-slate-500">Total distributed value</p>
                   </CardContent>
@@ -829,7 +862,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-slate-900">
-                      ${(recoverySummary?.totalRecovered || 0).toLocaleString()}
+                      Rs {(recoverySummary?.totalRecovered || 0).toLocaleString()}
                     </div>
                     <p className="text-xs text-slate-500">Payment collections</p>
                   </CardContent>
@@ -842,7 +875,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-slate-900">
-                      ${(recoverySummary?.totalOutstanding || 0).toLocaleString()}
+                      Rs {(recoverySummary?.totalOutstanding || 0).toLocaleString()}
                     </div>
                     <p className="text-xs text-slate-500">Pending payments</p>
                   </CardContent>
@@ -920,7 +953,7 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Total Profit</span>
                         <span className="text-lg font-bold text-green-600">
-                          ${monthlyDistributionProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          Rs {monthlyDistributionProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </div>

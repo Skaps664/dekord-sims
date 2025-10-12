@@ -131,7 +131,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
         // Filter only finished products with stock > 0 for distribution
         const availableProducts = inventoryResult.data
           .filter((item: any) => 
-            item.item_type === 'finished_product' && (item.current_stock || item.quantity) > 0
+            item.item_type === 'finished_product' && item.quantity > 0
           )
           .map((item: any) => ({
             product_id: item.id,
@@ -139,12 +139,12 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
             category: item.category || 'Finished Product',
             unit_price: item.selling_price || item.unit_cost || 0,
             cost_price: item.unit_cost || 0,
-            current_stock: item.current_stock || item.quantity || 0,
+            current_stock: item.quantity || 0, // quantity is the current available stock after distributions
             minimum_stock: item.minimum_stock || 0,
             maximum_stock: item.maximum_stock || 0,
             location: item.location || 'Warehouse',
-            stock_status: (item.current_stock || item.quantity) > (item.minimum_stock || 0) ? 'In Stock' : 'Low Stock',
-            inventory_value: (item.current_stock || item.quantity) * (item.unit_cost || 0),
+            stock_status: item.quantity > (item.minimum_stock || 0) ? 'In Stock' : 'Low Stock',
+            inventory_value: item.quantity * (item.unit_cost || 0),
             last_updated: item.last_updated || item.updatedAt,
             barcode: item.barcode
           }))
