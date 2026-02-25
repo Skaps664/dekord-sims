@@ -85,26 +85,26 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
 
   const getDateRange = () => {
     const today = new Date()
-    
+
     switch (dateRangeMode) {
       case "month":
         // Use selectedMonth (e.g., "2025-10" for October 2025)
         const startDate = new Date(selectedMonth + "-01")
         const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0)
         return { startDate, endDate }
-      
+
       case "60days":
         const end60 = new Date(today)
         const start60 = new Date(today)
         start60.setDate(start60.getDate() - 60)
         return { startDate: start60, endDate: end60 }
-      
+
       case "90days":
         const end90 = new Date(today)
         const start90 = new Date(today)
         start90.setDate(start90.getDate() - 90)
         return { startDate: start90, endDate: end90 }
-      
+
       case "custom":
         if (customStartDate && customEndDate) {
           return {
@@ -116,7 +116,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
         const fallbackStart = new Date(selectedMonth + "-01")
         const fallbackEnd = new Date(fallbackStart.getFullYear(), fallbackStart.getMonth() + 1, 0)
         return { startDate: fallbackStart, endDate: fallbackEnd }
-      
+
       default:
         const defaultStart = new Date(selectedMonth + "-01")
         const defaultEnd = new Date(defaultStart.getFullYear(), defaultStart.getMonth() + 1, 0)
@@ -171,7 +171,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
 
   const exportReport = async () => {
     if (!monthlyData || !reportRef.current) return
-    
+
     try {
       setExporting(true)
 
@@ -180,7 +180,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
 
       // Wait a moment for React to update the DOM
       await new Promise(resolve => setTimeout(resolve, 100))
-      
+
       // Use modern-screenshot instead of html2canvas - it supports oklch!
       const dataUrl = await domToPng(reportRef.current, {
         quality: 0.95,
@@ -191,7 +191,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
       // Create image from data URL
       const img = new Image()
       img.src = dataUrl
-      
+
       await new Promise((resolve) => {
         img.onload = resolve
       })
@@ -273,39 +273,39 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
   }
 
   // Process data for charts - Filter finished products properly
-  const finishedProducts = (monthlyData.inventory || []).filter((item: any) => 
+  const finishedProducts = (monthlyData.inventory || []).filter((item: any) =>
     item.item_type === "finished_product" || item.inventoryType === "finished"
   )
-  
-  const rawMaterials = (monthlyData.inventory || []).filter((item: any) => 
+
+  const rawMaterials = (monthlyData.inventory || []).filter((item: any) =>
     item.item_type === "raw_material" || item.inventoryType === "raw"
   )
-  
+
   const lowStockItems = finishedProducts.filter((item: any) => {
     const qty = item.quantity || 0
     const minStock = item.minimum_stock || item.minStock || 0
     return qty <= minStock
   })
-  
+
   const inStockProducts = finishedProducts.filter((item: any) => {
     const qty = item.quantity || 0
     const minStock = item.minimum_stock || item.minStock || 0
     return qty > minStock
   })
-  
+
   // Calculate total values for pie chart
   const finishedProductsValue = finishedProducts.reduce((sum: number, item: any) => {
     const quantity = item.quantity || 0
-    const price = item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0
+    const price = item.production_cost_per_unit || item.unit_cost || item.unitCost || 0
     return sum + (quantity * price)
   }, 0)
-  
+
   const rawMaterialsValue = rawMaterials.reduce((sum: number, item: any) => {
     const quantity = item.quantity || 0
     const price = item.unit_cost || item.unitCost || 0
     return sum + (quantity * price)
   }, 0)
-  
+
   const categoryData = [
     {
       category: "Finished Products",
@@ -318,35 +318,35 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
       count: rawMaterials.length,
     },
   ].filter(cat => cat.value > 0) // Only show categories with value
-  
+
   console.log('📊 Category Data for Pie Chart:', categoryData)
 
   // Group distributions by product_name and aggregate
   const productProfitMap: Record<string, { revenue: number, cost: number, profit: number, count: number }> = {}
-  
+
   console.log('🔍 Processing distributions for profitability:', monthlyData.distributions?.length || 0)
-  
-  ;(monthlyData.distributions || []).forEach((dist: any) => {
-    const productName = dist.product_name || `Product ${dist.product_id || dist.inventory_item_id || 'Unknown'}`
-    
-    // Be more lenient - only skip if completely empty
-    if (!productName || productName === 'Unknown') {
-      console.log('⚠️ Skipping distribution with no product name:', dist)
-      return
-    }
-    
-    if (!productProfitMap[productName]) {
-      productProfitMap[productName] = { revenue: 0, cost: 0, profit: 0, count: 0 }
-    }
-    
-    productProfitMap[productName].revenue += dist.total_value || 0
-    productProfitMap[productName].cost += dist.cost_of_goods_sold || 0
-    productProfitMap[productName].profit += dist.gross_profit || 0
-    productProfitMap[productName].count += 1
-  })
-  
+
+    ; (monthlyData.distributions || []).forEach((dist: any) => {
+      const productName = dist.product_name || `Product ${dist.product_id || dist.inventory_item_id || 'Unknown'}`
+
+      // Be more lenient - only skip if completely empty
+      if (!productName || productName === 'Unknown') {
+        console.log('⚠️ Skipping distribution with no product name:', dist)
+        return
+      }
+
+      if (!productProfitMap[productName]) {
+        productProfitMap[productName] = { revenue: 0, cost: 0, profit: 0, count: 0 }
+      }
+
+      productProfitMap[productName].revenue += dist.total_value || 0
+      productProfitMap[productName].cost += dist.cost_of_goods_sold || 0
+      productProfitMap[productName].profit += dist.gross_profit || 0
+      productProfitMap[productName].count += 1
+    })
+
   console.log('📈 Product profit map:', productProfitMap)
-  
+
   const profitabilityData = Object.entries(productProfitMap)
     .map(([name, data]) => ({
       name,
@@ -357,7 +357,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
       count: data.count
     }))
     .sort((a, b) => b.profit - a.profit)
-  
+
   console.log('📊 Profitability data:', profitabilityData)
 
   return (
@@ -473,14 +473,14 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
               <strong>Selected Period:</strong>{" "}
               {(() => {
                 const { startDate, endDate } = getDateRange()
-                return `${startDate.toLocaleDateString("en-US", { 
-                  month: "short", 
-                  day: "numeric", 
-                  year: "numeric" 
-                })} - ${endDate.toLocaleDateString("en-US", { 
-                  month: "short", 
-                  day: "numeric", 
-                  year: "numeric" 
+                return `${startDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric"
+                })} - ${endDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric"
                 })}`
               })()}
             </div>
@@ -503,40 +503,40 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 <div className="text-2xl font-bold text-slate-900">
                   {formatCurrency((() => {
                     // Calculate like Financial tab - use quantity (real-time) not current_stock
-                    const finishedProducts = (monthlyData.inventory || []).filter((item: any) => 
+                    const finishedProducts = (monthlyData.inventory || []).filter((item: any) =>
                       item.item_type === "finished_product" || item.inventoryType === "finished"
                     )
-                    const rawMaterials = (monthlyData.inventory || []).filter((item: any) => 
+                    const rawMaterials = (monthlyData.inventory || []).filter((item: any) =>
                       item.item_type === "raw_material" || item.inventoryType === "raw"
                     )
-                    
+
                     const finishedValue = finishedProducts.reduce((sum: number, item: any) => {
                       const quantity = item.quantity || 0
-                      const price = item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0
+                      const price = item.production_cost_per_unit || item.unit_cost || item.unitCost || 0
                       return sum + (quantity * price)
                     }, 0)
-                    
+
                     const rawValue = rawMaterials.reduce((sum: number, item: any) => {
                       const quantity = item.quantity || 0
                       const cost = item.unit_cost || item.unitCost || 0
                       return sum + (quantity * cost)
                     }, 0)
-                    
+
                     return finishedValue + rawValue
                   })())}
                 </div>
                 <p className="text-xs text-slate-500">
                   Products: {formatCurrency((() => {
-                    const finishedProducts = (monthlyData.inventory || []).filter((item: any) => 
+                    const finishedProducts = (monthlyData.inventory || []).filter((item: any) =>
                       item.item_type === "finished_product" || item.inventoryType === "finished"
                     )
                     return finishedProducts.reduce((sum: number, item: any) => {
                       const quantity = item.quantity || 0
-                      const price = item.selling_price || item.sellingPrice || item.unit_cost || item.unitCost || 0
+                      const price = item.production_cost_per_unit || item.unit_cost || item.unitCost || 0
                       return sum + (quantity * price)
                     }, 0)
                   })())} | Materials: {formatCurrency((() => {
-                    const rawMaterials = (monthlyData.inventory || []).filter((item: any) => 
+                    const rawMaterials = (monthlyData.inventory || []).filter((item: any) =>
                       item.item_type === "raw_material" || item.inventoryType === "raw"
                     )
                     return rawMaterials.reduce((sum: number, item: any) => {
@@ -559,7 +559,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   {formatCurrency(monthlyData.summary.totalRevenue)}
                 </div>
                 <p className="text-xs text-slate-500">
-                  From {(monthlyData.distributions || []).filter((d: any) => 
+                  From {(monthlyData.distributions || []).filter((d: any) =>
                     d.status === 'completed' || !d.status
                   ).length} distributions
                 </p>
@@ -576,8 +576,8 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   {formatCurrency(monthlyData.summary.totalProfit)}
                 </div>
                 <p className="text-xs text-slate-500">
-                  Margin: {monthlyData.summary.totalRevenue > 0 
-                    ? ((monthlyData.summary.totalProfit / monthlyData.summary.totalRevenue) * 100).toFixed(1) 
+                  Margin: {monthlyData.summary.totalRevenue > 0
+                    ? ((monthlyData.summary.totalProfit / monthlyData.summary.totalRevenue) * 100).toFixed(1)
                     : '0.0'}%
                 </p>
               </CardContent>
@@ -593,8 +593,8 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   {formatCurrency(monthlyData.summary.totalProductionCost)}
                 </div>
                 <p className="text-xs text-slate-500">
-                  {formatCurrency(monthlyData.summary.totalUnitsProduced > 0 
-                    ? monthlyData.summary.totalProductionCost / monthlyData.summary.totalUnitsProduced 
+                  {formatCurrency(monthlyData.summary.totalUnitsProduced > 0
+                    ? monthlyData.summary.totalProductionCost / monthlyData.summary.totalUnitsProduced
                     : 0)}/unit avg
                 </p>
               </CardContent>
@@ -682,7 +682,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     </h4>
                     <div className="space-y-2">
                       {(() => {
-                        const rawMaterials = (monthlyData.inventory || []).filter((item: any) => 
+                        const rawMaterials = (monthlyData.inventory || []).filter((item: any) =>
                           item.item_type === "raw_material" || item.inventoryType === "raw"
                         )
                         const totalRawValue = rawMaterials.reduce((sum: number, item: any) => {
@@ -789,7 +789,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       <div className="flex justify-between text-sm">
                         <span className="text-purple-700">Cost of Goods Sold:</span>
                         <span className="font-semibold text-red-600">
-                          {formatCurrency((monthlyData.distributions || []).reduce((sum: any, d: any) => 
+                          {formatCurrency((monthlyData.distributions || []).reduce((sum: any, d: any) =>
                             sum + (d.cost_of_goods_sold || 0), 0
                           ))}
                         </span>
@@ -797,16 +797,16 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       <div className="flex justify-between text-sm">
                         <span className="text-purple-700">Profit Margin:</span>
                         <span className="font-semibold">
-                          {monthlyData.summary.totalRevenue > 0 
-                            ? ((monthlyData.summary.totalProfit / monthlyData.summary.totalRevenue) * 100).toFixed(1) 
+                          {monthlyData.summary.totalRevenue > 0
+                            ? ((monthlyData.summary.totalProfit / monthlyData.summary.totalRevenue) * 100).toFixed(1)
                             : '0.0'}%
                         </span>
                       </div>
                       <div className="flex justify-between text-sm border-t border-purple-200 pt-2">
                         <span className="text-purple-900 font-semibold">Avg Profit per Order:</span>
                         <span className="font-bold text-purple-900">
-                          {formatCurrency((monthlyData.distributions || []).length > 0 
-                            ? monthlyData.summary.totalProfit / (monthlyData.distributions || []).length 
+                          {formatCurrency((monthlyData.distributions || []).length > 0
+                            ? monthlyData.summary.totalProfit / (monthlyData.distributions || []).length
                             : 0
                           )}
                         </span>
@@ -863,8 +863,8 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       <div className="flex justify-between text-sm border-t border-orange-200 pt-2">
                         <span className="text-orange-900 font-semibold">Avg Cost per Unit:</span>
                         <span className="font-bold text-orange-900">
-                          {formatCurrency(monthlyData.summary.totalUnitsProduced > 0 
-                            ? monthlyData.summary.totalProductionCost / monthlyData.summary.totalUnitsProduced 
+                          {formatCurrency(monthlyData.summary.totalUnitsProduced > 0
+                            ? monthlyData.summary.totalProductionCost / monthlyData.summary.totalUnitsProduced
                             : 0
                           )}
                         </span>
@@ -879,13 +879,13 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       {(() => {
                         let totalProduced = 0
                         let totalRejected = 0
-                        ;(monthlyData.production || []).forEach((batch: any) => {
-                          totalProduced += batch.quantity_produced || batch.quantityProduced || 0
-                          totalRejected += batch.rejected_units || 0
-                        })
+                          ; (monthlyData.production || []).forEach((batch: any) => {
+                            totalProduced += batch.quantity_produced || batch.quantityProduced || 0
+                            totalRejected += batch.rejected_units || 0
+                          })
                         const totalAccepted = totalProduced - totalRejected
                         const acceptanceRate = totalProduced > 0 ? ((totalAccepted / totalProduced) * 100) : 100
-                        
+
                         return (
                           <>
                             <div className="flex justify-between text-sm">
@@ -966,7 +966,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       <div className="flex justify-between text-sm border-t border-indigo-200 pt-2">
                         <span className="text-indigo-900 font-semibold">Total Value:</span>
                         <span className="font-bold text-indigo-900">
-                          {formatCurrency((monthlyData.distributions || []).reduce((sum: any, d: any) => 
+                          {formatCurrency((monthlyData.distributions || []).reduce((sum: any, d: any) =>
                             sum + (d.total_value || 0), 0
                           ))}
                         </span>
@@ -980,14 +980,14 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     <div className="space-y-1 text-sm">
                       {(() => {
                         const customerRevenue: Record<string, number> = {}
-                        ;(monthlyData.distributions || []).forEach((dist: any) => {
-                          const customer = dist.recipient_name || 'Unknown'
-                          customerRevenue[customer] = (customerRevenue[customer] || 0) + (dist.total_value || 0)
-                        })
+                          ; (monthlyData.distributions || []).forEach((dist: any) => {
+                            const customer = dist.recipient_name || 'Unknown'
+                            customerRevenue[customer] = (customerRevenue[customer] || 0) + (dist.total_value || 0)
+                          })
                         const topCustomers = Object.entries(customerRevenue)
                           .sort((a, b) => b[1] - a[1])
                           .slice(0, 3)
-                        
+
                         return topCustomers.length > 0 ? (
                           topCustomers.map(([name, value], index) => (
                             <div key={index} className="flex justify-between text-green-800">
@@ -1008,14 +1008,14 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     <div className="space-y-1 text-sm">
                       {(() => {
                         const productQuantities: Record<string, number> = {}
-                        ;(monthlyData.distributions || []).forEach((dist: any) => {
-                          const product = dist.product_name || 'Unknown'
-                          productQuantities[product] = (productQuantities[product] || 0) + (dist.quantity || 0)
-                        })
+                          ; (monthlyData.distributions || []).forEach((dist: any) => {
+                            const product = dist.product_name || 'Unknown'
+                            productQuantities[product] = (productQuantities[product] || 0) + (dist.quantity || 0)
+                          })
                         const topProducts = Object.entries(productQuantities)
                           .sort((a, b) => b[1] - a[1])
                           .slice(0, 3)
-                        
+
                         return topProducts.length > 0 ? (
                           topProducts.map(([name, quantity], index) => (
                             <div key={index} className="flex justify-between text-blue-800">
@@ -1038,7 +1038,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                         const completed = (monthlyData.distributions || []).filter((d: any) => d.status === 'completed' || !d.status).length
                         const pending = (monthlyData.distributions || []).filter((d: any) => d.status === 'pending').length
                         const cancelled = (monthlyData.distributions || []).filter((d: any) => d.status === 'cancelled').length
-                        
+
                         return (
                           <>
                             <div className="flex justify-between text-sm">
@@ -1142,18 +1142,18 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   <ComposedChart data={(profitabilityData || []).slice(0, 10)}>
                     <defs>
                       <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.3} />
                       </linearGradient>
                       <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.3}/>
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.3} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} fontSize={12} />
                     <YAxis />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value: number) => [formatCurrency(value)]}
                       contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                     />
@@ -1164,7 +1164,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   </ComposedChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  📊 <strong>What this shows:</strong> Compare revenue (green) vs costs (red) for each product. The purple line shows profit. 
+                  📊 <strong>What this shows:</strong> Compare revenue (green) vs costs (red) for each product. The purple line shows profit.
                   Products where green bars are taller than red bars are profitable.
                 </p>
               </CardContent>
@@ -1205,7 +1205,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip 
+                        <Tooltip
                           formatter={(value: number) => [formatCurrency(value), "Value"]}
                           contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                         />
@@ -1227,7 +1227,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   </>
                 )}
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  📦 <strong>What this shows:</strong> Visual breakdown of inventory value by category (Finished Products vs Raw Materials). 
+                  📦 <strong>What this shows:</strong> Visual breakdown of inventory value by category (Finished Products vs Raw Materials).
                   Larger slices mean higher value stored in that category.
                 </p>
               </CardContent>
@@ -1248,13 +1248,13 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={(() => {
                     console.log('🏭 Processing production data:', monthlyData.production?.length || 0)
-                    
+
                     const prodData = (monthlyData.production || [])
                       .map((batch: any) => {
                         const productName = batch.product_name || `Batch ${batch.id || batch.batch_number || 'Unknown'}`
                         const costPerUnit = batch.cost_per_unit || batch.costPerUnit || 0
                         const quantityProduced = batch.quantity_produced || batch.quantityProduced || 0
-                        
+
                         return {
                           product_name: productName,
                           cost_per_unit: costPerUnit,
@@ -1263,9 +1263,9 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       })
                       .filter((batch: any) => batch.cost_per_unit > 0 && batch.product_name !== 'Unknown')
                       .slice(0, 10)
-                    
+
                     console.log('📊 Production chart data:', prodData)
-                    
+
                     if (prodData.length === 0) {
                       return [{ product_name: 'No Production Data', cost_per_unit: 0 }]
                     }
@@ -1273,14 +1273,14 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   })()}>
                     <defs>
                       <linearGradient id="productionGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.9}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.4}/>
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.9} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.4} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="product_name" angle={-45} textAnchor="end" height={100} fontSize={12} />
                     <YAxis />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value: number) => [formatCurrency(value), "Cost per Unit"]}
                       contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                     />
@@ -1288,7 +1288,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   </BarChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  🏭 <strong>What this shows:</strong> Cost to produce each unit of product. Lower bars mean more efficient production. 
+                  🏭 <strong>What this shows:</strong> Cost to produce each unit of product. Lower bars mean more efficient production.
                   Use this to identify which products are expensive to make.
                 </p>
               </CardContent>
@@ -1302,10 +1302,10 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
               <CardContent>
                 {(() => {
                   console.log('🔍 Raw Materials Data:', monthlyData.rawMaterials)
-                  
+
                   const materials = (monthlyData.rawMaterials || [])
-                    .filter((material: any) => 
-                      material.material_name && 
+                    .filter((material: any) =>
+                      material.material_name &&
                       material.material_name !== 'Unknown Material' &&
                       material.material_name !== 'Material undefined' &&
                       !material.material_name.includes('undefined') &&
@@ -1313,9 +1313,9 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     )
                     .sort((a: any, b: any) => (b.total_cost_used || 0) - (a.total_cost_used || 0))
                     .slice(0, 5)
-                  
+
                   console.log('📊 Filtered materials:', materials)
-                  
+
                   if (materials.length === 0) {
                     return (
                       <div className="text-center py-8">
@@ -1336,7 +1336,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       </div>
                     )
                   }
-                  
+
                   return (
                     <>
                       <div className="space-y-3">
@@ -1364,13 +1364,13 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                           </div>
                         ))}
                       </div>
-                      
+
                       {/* Summary Bar */}
                       <div className="mt-4 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
                         <div className="flex items-center justify-between">
                           <div className="text-sm font-medium text-slate-700">Total Material Cost</div>
                           <div className="text-lg font-bold text-blue-900">
-                            {formatCurrency((monthlyData.rawMaterials || []).reduce((sum: number, m: any) => 
+                            {formatCurrency((monthlyData.rawMaterials || []).reduce((sum: number, m: any) =>
                               sum + (m.total_cost_used || 0), 0
                             ))}
                           </div>
@@ -1405,23 +1405,23 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     let totalAccepted = 0
                     let totalProductionCost = 0
                     let totalRejectedValue = 0
-                    
-                    ;(monthlyData.production || []).forEach((batch: any) => {
-                      const produced = batch.quantity_produced || batch.quantityProduced || 0
-                      const rejected = batch.rejected_units || 0
-                      const accepted = produced - rejected
-                      const costPerUnit = batch.cost_per_unit || batch.costPerUnit || 0
-                      
-                      totalProduced += produced
-                      totalRejected += rejected
-                      totalAccepted += accepted
-                      totalProductionCost += (batch.total_cost || batch.totalCost || 0)
-                      totalRejectedValue += rejected * costPerUnit
-                    })
-                    
+
+                      ; (monthlyData.production || []).forEach((batch: any) => {
+                        const produced = batch.quantity_produced || batch.quantityProduced || 0
+                        const rejected = batch.rejected_units || 0
+                        const accepted = produced - rejected
+                        const costPerUnit = batch.cost_per_unit || batch.costPerUnit || 0
+
+                        totalProduced += produced
+                        totalRejected += rejected
+                        totalAccepted += accepted
+                        totalProductionCost += (batch.total_cost || batch.totalCost || 0)
+                        totalRejectedValue += rejected * costPerUnit
+                      })
+
                     const acceptanceRate = totalProduced > 0 ? ((totalAccepted / totalProduced) * 100) : 100
                     const rejectionRate = totalProduced > 0 ? ((totalRejected / totalProduced) * 100) : 0
-                    
+
                     return (
                       <>
                         <div className="bg-blue-50 p-4 rounded-lg">
@@ -1450,7 +1450,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 </div>
               </CardContent>
             </Card>
-            
+
             {/* Production Batches Detail */}
             <Card className="col-span-1 lg:col-span-3">
               <CardHeader>
@@ -1461,12 +1461,12 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 <div className="space-y-3">
                   {(() => {
                     const batches = (monthlyData.production || [])
-                      .filter((batch: any) => 
-                        batch.product_name && 
+                      .filter((batch: any) =>
+                        batch.product_name &&
                         batch.product_name !== 'Unknown Product' &&
                         batch.product_name !== 'Unknown'
                       )
-                    
+
                     if (batches.length === 0) {
                       return (
                         <div className="text-center py-8 text-slate-500">
@@ -1475,7 +1475,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                         </div>
                       )
                     }
-                    
+
                     return batches.map((batch: any, index: number) => {
                       const produced = batch.quantity_produced || batch.quantityProduced || 0
                       const rejected = batch.rejected_units || 0
@@ -1484,14 +1484,14 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       const totalCost = batch.total_cost || batch.totalCost || 0
                       const rejectedValue = rejected * costPerUnit
                       const acceptanceRate = produced > 0 ? ((accepted / produced) * 100) : 100
-                      
+
                       return (
                         <div key={batch.id || index} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <div className="font-semibold text-lg">{batch.product_name}</div>
                               <div className="text-sm text-slate-600">
-                                Batch: {batch.batch_number || batch.batchName || `#${batch.id}`} • 
+                                Batch: {batch.batch_number || batch.batchName || `#${batch.id}`} •
                                 {batch.production_date ? ` ${new Date(batch.production_date).toLocaleDateString()}` : ''}
                               </div>
                             </div>
@@ -1500,7 +1500,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                               <div className="font-bold text-lg">{formatCurrency(totalCost)}</div>
                             </div>
                           </div>
-                          
+
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                             <div>
                               <div className="text-xs text-slate-500">Produced</div>
@@ -1523,7 +1523,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                               <div className="font-semibold">{formatCurrency(costPerUnit)}</div>
                             </div>
                           </div>
-                          
+
                           {rejected > 0 && (
                             <div className="mt-2 p-2 bg-red-50 rounded text-sm">
                               <span className="text-red-600 font-medium">⚠️ Waste Cost: {formatCurrency(rejectedValue)}</span>
@@ -1553,18 +1553,18 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 <AreaChart data={monthlyData.financial || []}>
                   <defs>
                     <linearGradient id="revenueAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.1} />
                     </linearGradient>
                     <linearGradient id="expensesAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="month" />
                   <YAxis />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: number) => [formatCurrency(value)]}
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                   />
@@ -1588,7 +1588,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 </AreaChart>
               </ResponsiveContainer>
               <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                📈 <strong>What this shows:</strong> Track revenue (green) and expenses (red) trends over time. 
+                📈 <strong>What this shows:</strong> Track revenue (green) and expenses (red) trends over time.
                 Upward green trend = growing sales. Watch for months where expenses exceed revenue.
               </p>
             </CardContent>
@@ -1607,7 +1607,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
               <div className="space-y-4">
                 {(() => {
                   console.log('👥 Processing recipients:', monthlyData.distributions?.length || 0)
-                  
+
                   const topRecipients = (monthlyData.distributions || [])
                     .filter((dist: any) => {
                       // Be more lenient - just need recipient name
@@ -1617,9 +1617,9 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     })
                     .sort((a: any, b: any) => (b.gross_profit || 0) - (a.gross_profit || 0))
                     .slice(0, 10)
-                  
+
                   console.log('📊 Top recipients data:', topRecipients)
-                  
+
                   if (topRecipients.length === 0) {
                     return (
                       <div className="text-center py-8 text-slate-500">
@@ -1628,7 +1628,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       </div>
                     )
                   }
-                  
+
                   return topRecipients.map((dist: any, index: number) => (
                     <div key={dist.id || index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                       <div className="flex items-center gap-3">
@@ -1655,7 +1655,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
         {/* NEW: Advanced Analytics Section */}
         <div className="space-y-6">
           <h3 className="text-xl font-semibold text-slate-900 border-b pb-2">Advanced Analytics</h3>
-          
+
           {/* Sales Velocity Chart */}
           <Card>
             <CardHeader>
@@ -1666,26 +1666,26 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
               <ResponsiveContainer width="100%" height={350}>
                 <ComposedChart data={(() => {
                   console.log('⚡ Processing sales velocity for', monthlyData.distributions?.length || 0, 'distributions')
-                  
+
                   // Group distributions by product and calculate velocity
                   const productSales: Record<string, { name: string, totalUnits: number, days: number }> = {}
                   const { startDate, endDate } = getDateRange()
                   const daysDiff = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
-                  
-                  ;(monthlyData.distributions || []).forEach((dist: any) => {
-                    const productName = dist.product_name || `Product ${dist.product_id || dist.inventory_item_id || 'Unknown'}`
-                    
-                    // Be more lenient - only skip if completely empty
-                    if (!productName || productName === 'Unknown') return
-                    
-                    if (!productSales[productName]) {
-                      productSales[productName] = { name: productName, totalUnits: 0, days: daysDiff }
-                    }
-                    productSales[productName].totalUnits += dist.quantity || 0
-                  })
-                  
+
+                    ; (monthlyData.distributions || []).forEach((dist: any) => {
+                      const productName = dist.product_name || `Product ${dist.product_id || dist.inventory_item_id || 'Unknown'}`
+
+                      // Be more lenient - only skip if completely empty
+                      if (!productName || productName === 'Unknown') return
+
+                      if (!productSales[productName]) {
+                        productSales[productName] = { name: productName, totalUnits: 0, days: daysDiff }
+                      }
+                      productSales[productName].totalUnits += dist.quantity || 0
+                    })
+
                   const velocityData = Object.values(productSales)
-                    .map(p => ({ 
+                    .map(p => ({
                       name: p.name,
                       velocity: Number((p.totalUnits / p.days).toFixed(2)),
                       units: p.totalUnits
@@ -1693,26 +1693,26 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     .filter(p => !isNaN(p.velocity) && p.velocity > 0)
                     .sort((a, b) => b.velocity - a.velocity)
                     .slice(0, 10)
-                  
+
                   console.log('📊 Sales velocity data:', velocityData)
-                  
+
                   if (velocityData.length === 0) {
                     return [{ name: 'No Sales Data', velocity: 0, units: 0 }]
                   }
-                  
+
                   return velocityData
                 })()}>
                   <defs>
                     <linearGradient id="velocityGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.3} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                   <YAxis yAxisId="left" label={{ value: 'Units/Day', angle: -90, position: 'insideLeft' }} />
                   <YAxis yAxisId="right" orientation="right" label={{ value: 'Total Units', angle: 90, position: 'insideRight' }} />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: any, name: string) => {
                       if (name === 'velocity') return [value + ' units/day', 'Sales Velocity']
                       return [value + ' units', 'Total Units']
@@ -1725,7 +1725,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 </ComposedChart>
               </ResponsiveContainer>
               <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                ⚡ <strong>What this shows:</strong> How fast each product is selling (units per day). Purple bars show sales speed, 
+                ⚡ <strong>What this shows:</strong> How fast each product is selling (units per day). Purple bars show sales speed,
                 orange line shows total units sold. Higher velocity = faster moving products.
               </p>
             </CardContent>
@@ -1743,18 +1743,18 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   const chartData = profitabilityData
                     .filter(p => !isNaN(p.margin) && p.revenue > 0)
                     .slice(0, 10)
-                  
+
                   if (chartData.length === 0) {
                     return [{ name: 'No Data', revenue: 0, cost: 0, margin: 0 }]
                   }
-                  
+
                   return chartData
                 })()}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                   <YAxis yAxisId="left" label={{ value: 'Amount (Rs)', angle: -90, position: 'insideLeft' }} />
                   <YAxis yAxisId="right" orientation="right" label={{ value: 'Margin (%)', angle: 90, position: 'insideRight' }} />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: number) => [formatCurrency(value)]}
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                   />
@@ -1765,7 +1765,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 </ComposedChart>
               </ResponsiveContainer>
               <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                💰 <strong>What this shows:</strong> Profit margin percentage (orange line) shows what % of revenue is profit. 
+                💰 <strong>What this shows:</strong> Profit margin percentage (orange line) shows what % of revenue is profit.
                 Higher margin % = more profitable products. Aim for products with high margin and high revenue.
               </p>
             </CardContent>
@@ -1781,29 +1781,29 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
               <ResponsiveContainer width="100%" height={350}>
                 <BarChart data={(() => {
                   console.log('💰 Processing customer lifetime value')
-                  
+
                   // Aggregate by recipient
                   const customerData: Record<string, { revenue: number, profit: number, orders: number }> = {}
-                  
-                  ;(monthlyData.distributions || []).forEach((dist: any) => {
-                    const customer = dist.recipient_name
-                    if (!customer || customer === 'Unknown Recipient') return
-                    
-                    // Be more lenient with product names
-                    const hasProduct = dist.product_name
-                    if (!hasProduct) return
-                    
-                    if (!customerData[customer]) {
-                      customerData[customer] = { revenue: 0, profit: 0, orders: 0 }
-                    }
-                    customerData[customer].revenue += dist.total_value || 0
-                    customerData[customer].profit += dist.gross_profit || 0
-                    customerData[customer].orders += 1
-                  })
-                  
+
+                    ; (monthlyData.distributions || []).forEach((dist: any) => {
+                      const customer = dist.recipient_name
+                      if (!customer || customer === 'Unknown Recipient') return
+
+                      // Be more lenient with product names
+                      const hasProduct = dist.product_name
+                      if (!hasProduct) return
+
+                      if (!customerData[customer]) {
+                        customerData[customer] = { revenue: 0, profit: 0, orders: 0 }
+                      }
+                      customerData[customer].revenue += dist.total_value || 0
+                      customerData[customer].profit += dist.gross_profit || 0
+                      customerData[customer].orders += 1
+                    })
+
                   const customerChartData = Object.entries(customerData)
-                    .map(([name, data]) => ({ 
-                      name, 
+                    .map(([name, data]) => ({
+                      name,
                       revenue: data.revenue,
                       profit: data.profit,
                       orders: data.orders
@@ -1811,29 +1811,29 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     .filter(c => !isNaN(c.revenue) && c.revenue > 0)
                     .sort((a, b) => b.revenue - a.revenue)
                     .slice(0, 10)
-                  
+
                   console.log('📊 Customer lifetime value data:', customerChartData)
-                  
+
                   if (customerChartData.length === 0) {
                     return [{ name: 'No Customer Data', revenue: 0, profit: 0, orders: 0 }]
                   }
-                  
+
                   return customerChartData
                 })()}>
                   <defs>
                     <linearGradient id="revenueCustomerGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.4}/>
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.4} />
                     </linearGradient>
                     <linearGradient id="profitCustomerGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.4}/>
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.4} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                   <YAxis />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: number) => [formatCurrency(value)]}
                     contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                   />
@@ -1843,7 +1843,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 </BarChart>
               </ResponsiveContainer>
               <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                👥 <strong>What this shows:</strong> Total value each customer has generated. Blue = total revenue, Green = profit. 
+                👥 <strong>What this shows:</strong> Total value each customer has generated. Blue = total revenue, Green = profit.
                 Focus on customers with high revenue AND high profit for best relationships.
               </p>
             </CardContent>
@@ -1859,32 +1859,32 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
               <ResponsiveContainer width="100%" height={350}>
                 <BarChart data={(() => {
                   console.log('🔄 Processing inventory turnover')
-                  
+
                   // Calculate turnover: (Units Sold / Average Inventory) for each product
                   const turnoverData: Record<string, { sold: number, current: number }> = {}
-                  
-                  // Get sold units from distributions
-                  ;(monthlyData.distributions || []).forEach((dist: any) => {
-                    const productName = dist.product_name || `Product ${dist.product_id || dist.inventory_item_id}`
-                    if (!productName || productName === 'Unknown') return
-                    
-                    if (!turnoverData[productName]) {
-                      turnoverData[productName] = { sold: 0, current: 0 }
-                    }
-                    turnoverData[productName].sold += dist.quantity || 0
-                  })
-                  
-                  // Get current inventory
-                  ;(monthlyData.inventory || []).forEach((item: any) => {
-                    const productName = item.name
-                    if (!productName || item.item_type !== 'finished_product') return
-                    
-                    if (!turnoverData[productName]) {
-                      turnoverData[productName] = { sold: 0, current: 0 }
-                    }
-                    turnoverData[productName].current += item.quantity || 0
-                  })
-                  
+
+                    // Get sold units from distributions
+                    ; (monthlyData.distributions || []).forEach((dist: any) => {
+                      const productName = dist.product_name || `Product ${dist.product_id || dist.inventory_item_id}`
+                      if (!productName || productName === 'Unknown') return
+
+                      if (!turnoverData[productName]) {
+                        turnoverData[productName] = { sold: 0, current: 0 }
+                      }
+                      turnoverData[productName].sold += dist.quantity || 0
+                    })
+
+                    // Get current inventory
+                    ; (monthlyData.inventory || []).forEach((item: any) => {
+                      const productName = item.name
+                      if (!productName || item.item_type !== 'finished_product') return
+
+                      if (!turnoverData[productName]) {
+                        turnoverData[productName] = { sold: 0, current: 0 }
+                      }
+                      turnoverData[productName].current += item.quantity || 0
+                    })
+
                   const turnoverChartData = Object.entries(turnoverData)
                     .map(([name, data]) => {
                       const avgInventory = Math.max(1, (data.current + data.sold) / 2)
@@ -1899,25 +1899,25 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     .filter(p => !isNaN(p.turnover) && p.sold > 0)
                     .sort((a, b) => b.turnover - a.turnover)
                     .slice(0, 10)
-                  
+
                   console.log('📊 Inventory turnover data:', turnoverChartData)
-                  
+
                   if (turnoverChartData.length === 0) {
                     return [{ name: 'No Turnover Data', turnover: 0, sold: 0, current: 0 }]
                   }
-                  
+
                   return turnoverChartData
                 })()}>
                   <defs>
                     <linearGradient id="turnoverGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.9}/>
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.3} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                   <YAxis label={{ value: 'Turnover Rate', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value: any, name: string) => {
                       if (name === 'turnover') return [value + 'x', 'Turnover Rate']
                       return [value + ' units', name === 'sold' ? 'Units Sold' : 'Current Stock']
@@ -1929,7 +1929,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 </BarChart>
               </ResponsiveContainer>
               <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                🔄 <strong>What this shows:</strong> How many times inventory "turns over" (sells and restocks). Higher turnover = efficient inventory. 
+                🔄 <strong>What this shows:</strong> How many times inventory "turns over" (sells and restocks). Higher turnover = efficient inventory.
                 Low turnover may mean slow-moving stock. Aim for 2-4x or higher for fast-moving products.
               </p>
               <div className="mt-4 p-4 bg-blue-50 rounded-lg">
@@ -1945,7 +1945,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
         {/* NEW: Deep Data Science Analytics Section */}
         <div className="space-y-6">
           <h3 className="text-xl font-semibold text-slate-900 border-b pb-2">🔬 Deep Data Science Analytics</h3>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Product Performance Radar Chart */}
             <Card>
@@ -1961,26 +1961,26 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       .filter(p => p.revenue > 0)
                       .sort((a, b) => b.revenue - a.revenue)
                       .slice(0, 5)
-                    
+
                     if (topProducts.length === 0) {
                       return []
                     }
-                    
+
                     // Create radar data - metrics are the axes, products are the data series
                     // Calculate max values for normalization
                     const maxRevenue = Math.max(...topProducts.map(p => p.revenue), 1)
                     const maxProfit = Math.max(...topProducts.map(p => p.profit), 1)
                     const maxMargin = Math.max(...topProducts.map(p => p.margin), 1)
-                    
+
                     // Create one object per metric (these will be the axes)
                     const metrics = ['Revenue', 'Profit', 'Margin', 'Cost Efficiency', 'Volume']
-                    
+
                     return metrics.map(metric => {
                       const dataPoint: any = { metric }
-                      
+
                       topProducts.forEach((product, idx) => {
                         const productKey = `P${idx + 1}` // P1, P2, P3, etc
-                        
+
                         // Calculate normalized score for this metric and product
                         let score = 0
                         if (metric === 'Revenue') {
@@ -1995,10 +1995,10 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                           // Estimate based on revenue/profit ratio
                           score = Math.round(Math.min(100, (product.revenue / Math.max(product.profit, 1))))
                         }
-                        
+
                         dataPoint[productKey] = Math.max(0, Math.min(100, score))
                       })
-                      
+
                       return dataPoint
                     })
                   })()}>
@@ -2010,9 +2010,9 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                         .filter((p: any) => p.revenue > 0)
                         .sort((a: any, b: any) => b.revenue - a.revenue)
                         .slice(0, 5)
-                      
+
                       const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899']
-                      
+
                       return topProducts.map((product: any, idx: number) => (
                         <Radar
                           key={idx}
@@ -2024,18 +2024,18 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                         />
                       ))
                     })()}
-                    <Legend 
+                    <Legend
                       wrapperStyle={{ fontSize: '12px' }}
                       iconType="circle"
                     />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
                       formatter={(value: any) => [`${value}/100`, 'Score']}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  🎯 <strong>What this shows:</strong> Multi-dimensional view of top 5 products across 5 key metrics. 
+                  🎯 <strong>What this shows:</strong> Multi-dimensional view of top 5 products across 5 key metrics.
                   Each colored area represents a product. Larger area = better overall performance. Compare shapes to see strengths/weaknesses.
                 </p>
               </CardContent>
@@ -2053,15 +2053,15 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     const totalRevenue = monthlyData.summary.totalRevenue || 0
                     const totalCost = monthlyData.summary.totalProductionCost || 0
                     const totalProfit = monthlyData.summary.totalProfit || 0
-                    
+
                     // Calculate distribution costs
-                    const distributionCosts = (monthlyData.distributions || []).reduce((sum: number, d: any) => 
+                    const distributionCosts = (monthlyData.distributions || []).reduce((sum: number, d: any) =>
                       sum + (d.cost_of_goods_sold || 0), 0
                     )
-                    
+
                     const operatingExpenses = totalCost
                     const netProfit = totalProfit
-                    
+
                     return [
                       { name: 'Revenue', value: totalRevenue, fill: '#10b981' },
                       { name: 'COGS', value: -distributionCosts, fill: '#ef4444' },
@@ -2073,7 +2073,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="name" angle={-20} textAnchor="end" height={80} />
                     <YAxis />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value: number) => [formatCurrency(Math.abs(value))]}
                       contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                     />
@@ -2085,7 +2085,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   </BarChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  💧 <strong>What this shows:</strong> Waterfall shows how revenue flows into profit. 
+                  💧 <strong>What this shows:</strong> Waterfall shows how revenue flows into profit.
                   Green bars = money in, Red/Orange = money out. Final bar shows net profit after all costs.
                 </p>
               </CardContent>
@@ -2101,20 +2101,20 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                 <ResponsiveContainer width="100%" height={400}>
                   <ScatterChart>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis 
-                      type="number" 
-                      dataKey="volume" 
-                      name="Volume" 
+                    <XAxis
+                      type="number"
+                      dataKey="volume"
+                      name="Volume"
                       label={{ value: 'Units Sold', position: 'bottom' }}
                     />
-                    <YAxis 
-                      type="number" 
-                      dataKey="value" 
-                      name="Value" 
+                    <YAxis
+                      type="number"
+                      dataKey="value"
+                      name="Value"
                       label={{ value: 'Revenue (Rs)', angle: -90, position: 'insideLeft' }}
                     />
                     <ZAxis type="number" dataKey="profit" range={[50, 400]} name="Profit" />
-                    <Tooltip 
+                    <Tooltip
                       cursor={{ strokeDasharray: '3 3' }}
                       formatter={(value: any, name: string) => {
                         if (name === 'Volume') return [value + ' units', 'Units Sold']
@@ -2124,8 +2124,8 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
                     />
                     <Legend />
-                    <Scatter 
-                      name="Products" 
+                    <Scatter
+                      name="Products"
                       data={(() => {
                         return profitabilityData
                           .filter(p => p.revenue > 0)
@@ -2136,13 +2136,13 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                             profit: p.profit,
                             name: p.name
                           }))
-                      })()} 
-                      fill="#8b5cf6" 
+                      })()}
+                      fill="#8b5cf6"
                     />
                   </ScatterChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  🎯 <strong>What this shows:</strong> Each dot is a product. Top-right = high value & high volume (STARS ⭐). 
+                  🎯 <strong>What this shows:</strong> Each dot is a product. Top-right = high value & high volume (STARS ⭐).
                   Bottom-left = low performers. Bubble size = profit amount.
                 </p>
               </CardContent>
@@ -2161,10 +2161,10 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                       .filter(p => p.revenue > 0)
                       .sort((a, b) => b.revenue - a.revenue)
                       .slice(0, 10)
-                    
+
                     const totalRevenue = sorted.reduce((sum, p) => sum + p.revenue, 0)
                     let cumulative = 0
-                    
+
                     return sorted.map((product, index) => {
                       cumulative += product.revenue
                       return {
@@ -2177,15 +2177,15 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   })()}>
                     <defs>
                       <linearGradient id="paretoGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9}/>
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.3} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                     <YAxis yAxisId="left" label={{ value: 'Revenue (Rs)', angle: -90, position: 'insideLeft' }} />
                     <YAxis yAxisId="right" orientation="right" label={{ value: 'Cumulative %', angle: 90, position: 'insideRight' }} domain={[0, 100]} />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value: any, name: string) => {
                         if (name === 'revenue') return [formatCurrency(value), 'Revenue']
                         return [value + '%', 'Cumulative %']
@@ -2198,7 +2198,7 @@ export function MonthlyReports({ selectedMonth, recoverySummary }: MonthlyReport
                   </ComposedChart>
                 </ResponsiveContainer>
                 <p className="text-xs text-slate-600 mt-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                  📊 <strong>What this shows:</strong> Pareto (80/20) analysis. Often 20% of products generate 80% of revenue. 
+                  📊 <strong>What this shows:</strong> Pareto (80/20) analysis. Often 20% of products generate 80% of revenue.
                   Purple bars = individual revenue, Red line = cumulative %. Focus on products before line hits 80%.
                 </p>
               </CardContent>

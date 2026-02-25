@@ -152,12 +152,8 @@ export default function Dashboard() {
     loadData()
   }, [])
 
-  // Reload data whenever tab changes for real-time updates
-  useEffect(() => {
-    if (activeTab !== "overview") {
-      loadData()
-    }
-  }, [activeTab])
+  // Data is loaded on mount. Subsequent real-time updates happen
+  // programmatically after successful mutations (e.g., after adding a batch).
 
   const loadData = async () => {
     try {
@@ -190,19 +186,19 @@ export default function Dashboard() {
 
       setInventory(inventoryData.data || [])
       setProducts(productsData.data || [])
-      
+
       // Calculate profit for distributions
       const distributionsWithProfit = (distributionsData.data || []).map((dist: any) => {
         const inventoryItem = (inventoryData.data || []).find((inv: any) => inv.id === dist.inventory_item_id)
         const costPrice = inventoryItem?.unit_cost || 0
         const unitPrice = dist.unit_price || 0
         const quantity = dist.quantity || 0
-        
+
         const costOfGoodsSold = costPrice * quantity
         const totalValue = unitPrice * quantity
         const grossProfit = totalValue - costOfGoodsSold
         const profitMarginPercent = totalValue > 0 ? (grossProfit / totalValue) * 100 : 0
-        
+
         return {
           ...dist,
           cost_price: costPrice,
@@ -212,7 +208,7 @@ export default function Dashboard() {
           total_amount: totalValue
         }
       })
-      
+
       setDistributions(distributionsWithProfit)
       setProductionBatches(productionBatchesData.data || [])
       setRecoverySummary(recoveryData?.data || null)
@@ -241,15 +237,15 @@ export default function Dashboard() {
   const totalProducts = products.length // Total number of product types
   const lowStockItems = inventory.filter((item) => item.quantity <= (item.minimum_stock || 0))
   const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0)
-  
+
   // Calculate monthly distribution metrics
   const monthlyDistributionValue = filteredDistributions.reduce((sum, d) => sum + (d.total_amount || d.totalValue || 0), 0)
   const monthlyDistributionProfit = filteredDistributions.reduce((sum, d) => sum + (d.gross_profit || 0), 0)
   const totalBatchesProduced = filteredBatches.length
   const completedOrders = filteredDistributions.filter((d) => d.status === "completed" || !d.status).length
   const pendingDistributions = filteredDistributions.filter((d) => d.status === "pending").length
-  const avgOrderValue = filteredDistributions.length > 0 
-    ? monthlyDistributionValue / filteredDistributions.length 
+  const avgOrderValue = filteredDistributions.length > 0
+    ? monthlyDistributionValue / filteredDistributions.length
     : 0
 
   // Production success metrics
@@ -311,12 +307,12 @@ export default function Dashboard() {
   const handleDistributionCreated = async (distribution: Distribution) => {
     // Reload all data to ensure inventory quantities are updated in real-time
     await loadData()
-    
+
     // Only process if items exist (legacy format)
     if (!distribution.items || distribution.items.length === 0) {
       return
     }
-    
+
     // Calculate profit for each item
     const distributionWithProfit = {
       ...distribution,
@@ -410,7 +406,7 @@ export default function Dashboard() {
 
   const deleteProduct = async (productId: string) => {
     console.log('[Product Delete] Attempting to delete product:', productId, typeof productId)
-    
+
     try {
       const response = await fetch(`/api/products/${productId}`, {
         method: "DELETE",
@@ -421,7 +417,7 @@ export default function Dashboard() {
       if (response.ok) {
         const result = await response.json()
         console.log('[Product Delete] API result:', result)
-        
+
         if (result.success) {
           // Filter by comparing string versions to handle both string and number ids
           setProducts((prev) => prev.filter((p) => String(p.id) !== String(productId)))
@@ -513,7 +509,7 @@ export default function Dashboard() {
 
       <div className="container mx-auto px-6 py-8">
         {showLeaderboard ? (
-          <AnalyticsDashboard open={true} onOpenChange={() => {}} distributions={distributions} />
+          <AnalyticsDashboard open={true} onOpenChange={() => { }} distributions={distributions} />
         ) : (
           <div className="flex gap-6">
             {/* Sidebar Navigation */}
@@ -522,11 +518,10 @@ export default function Dashboard() {
                 <nav className="space-y-1">
                   <button
                     onClick={() => setActiveTab("overview")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "overview"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "overview"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <LayoutDashboard className="w-5 h-5" />
                     <span>Overview</span>
@@ -534,11 +529,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("products")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "products"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "products"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <Box className="w-5 h-5" />
                     <span>Products</span>
@@ -546,11 +540,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("raw-materials")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "raw-materials"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "raw-materials"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <Boxes className="w-5 h-5" />
                     <span>Raw Materials</span>
@@ -558,11 +551,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("production")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "production"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "production"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <Factory className="w-5 h-5" />
                     <span>Production</span>
@@ -570,11 +562,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("ready")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "ready"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "ready"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <PackageCheck className="w-5 h-5" />
                     <span>Ready</span>
@@ -582,11 +573,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("distributions")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "distributions"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "distributions"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <ShoppingCart className="w-5 h-5" />
                     <span>Distributions</span>
@@ -594,11 +584,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("recovery")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "recovery"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "recovery"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <Wallet className="w-5 h-5" />
                     <span>Recovery</span>
@@ -607,11 +596,10 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("financial")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "financial"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "financial"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <DollarSign className="w-5 h-5" />
                     <span>Financial</span>
@@ -619,17 +607,16 @@ export default function Dashboard() {
 
                   <button
                     onClick={() => setActiveTab("reports")}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === "reports"
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "reports"
+                      ? "bg-blue-50 text-blue-700 shadow-sm"
+                      : "text-slate-700 hover:bg-slate-50"
+                      }`}
                   >
                     <FileText className="w-5 h-5" />
                     <span>Reports</span>
                   </button>
 
-                  
+
                 </nav>
               </div>
             </aside>
@@ -652,9 +639,8 @@ export default function Dashboard() {
 
             {/* Mobile Sidebar */}
             <aside
-              className={`lg:hidden fixed top-0 left-0 bottom-0 w-64 bg-white z-50 transform transition-transform duration-300 ${
-                sidebarOpen ? "translate-x-0" : "-translate-x-full"
-              }`}
+              className={`lg:hidden fixed top-0 left-0 bottom-0 w-64 bg-white z-50 transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+                }`}
             >
               <div className="p-4 border-b border-slate-200">
                 <h2 className="font-semibold text-lg text-slate-900">Navigation</h2>
@@ -665,11 +651,10 @@ export default function Dashboard() {
                     setActiveTab("overview")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "overview"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "overview"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <LayoutDashboard className="w-5 h-5" />
                   <span>Overview</span>
@@ -680,11 +665,10 @@ export default function Dashboard() {
                     setActiveTab("products")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "products"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "products"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <Box className="w-5 h-5" />
                   <span>Products</span>
@@ -695,11 +679,10 @@ export default function Dashboard() {
                     setActiveTab("raw-materials")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "raw-materials"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "raw-materials"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <Boxes className="w-5 h-5" />
                   <span>Raw Materials</span>
@@ -710,11 +693,10 @@ export default function Dashboard() {
                     setActiveTab("production")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "production"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "production"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <Factory className="w-5 h-5" />
                   <span>Production</span>
@@ -725,11 +707,10 @@ export default function Dashboard() {
                     setActiveTab("ready")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "ready"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "ready"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <PackageCheck className="w-5 h-5" />
                   <span>Ready</span>
@@ -740,11 +721,10 @@ export default function Dashboard() {
                     setActiveTab("distributions")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "distributions"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "distributions"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <ShoppingCart className="w-5 h-5" />
                   <span>Distributions</span>
@@ -755,11 +735,10 @@ export default function Dashboard() {
                     setActiveTab("financial")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "financial"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "financial"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <DollarSign className="w-5 h-5" />
                   <span>Financial</span>
@@ -770,11 +749,10 @@ export default function Dashboard() {
                     setActiveTab("reports")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "reports"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "reports"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <FileText className="w-5 h-5" />
                   <span>Reports</span>
@@ -785,11 +763,10 @@ export default function Dashboard() {
                     setActiveTab("recovery")
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === "recovery"
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === "recovery"
+                    ? "bg-blue-50 text-blue-700 shadow-sm"
+                    : "text-slate-700 hover:bg-slate-50"
+                    }`}
                 >
                   <Wallet className="w-5 h-5" />
                   <span>Recovery</span>
@@ -808,254 +785,254 @@ export default function Dashboard() {
                     </h2>
                   </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Total Products</CardTitle>
-                    <Package className="h-4 w-4 text-blue-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">{totalProducts}</div>
-                    <p className="text-xs text-slate-500">Product types</p>
-                  </CardContent>
-                </Card>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Total Products</CardTitle>
+                        <Package className="h-4 w-4 text-blue-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">{totalProducts}</div>
+                        <p className="text-xs text-slate-500">Product types</p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Low Stock Alerts</CardTitle>
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">{lowStockItems.length}</div>
-                    <p className="text-xs text-slate-500">Items need restocking</p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Low Stock Alerts</CardTitle>
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">{lowStockItems.length}</div>
+                        <p className="text-xs text-slate-500">Items need restocking</p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Monthly Distributions</CardTitle>
-                    <DollarSign className="h-4 w-4 text-green-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">
-                      Rs {monthlyDistributionValue.toLocaleString()}
-                    </div>
-                    <p className="text-xs text-slate-500">Total distributed value</p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Monthly Distributions</CardTitle>
+                        <DollarSign className="h-4 w-4 text-green-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">
+                          Rs {monthlyDistributionValue.toLocaleString()}
+                        </div>
+                        <p className="text-xs text-slate-500">Total distributed value</p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Production Batches</CardTitle>
-                    <Factory className="h-4 w-4 text-purple-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">{totalBatchesProduced}</div>
-                    <p className="text-xs text-slate-500">Batches this month</p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Production Batches</CardTitle>
+                        <Factory className="h-4 w-4 text-purple-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">{totalBatchesProduced}</div>
+                        <p className="text-xs text-slate-500">Batches this month</p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Total Recovered</CardTitle>
-                    <Wallet className="h-4 w-4 text-green-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">
-                      Rs {(recoverySummary?.totalRecovered || 0).toLocaleString()}
-                    </div>
-                    <p className="text-xs text-slate-500">Payment collections</p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Total Recovered</CardTitle>
+                        <Wallet className="h-4 w-4 text-green-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">
+                          Rs {(recoverySummary?.totalRecovered || 0).toLocaleString()}
+                        </div>
+                        <p className="text-xs text-slate-500">Payment collections</p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">
-                      Rs {(recoverySummary?.totalOutstanding || 0).toLocaleString()}
-                    </div>
-                    <p className="text-xs text-slate-500">Pending payments</p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Outstanding</CardTitle>
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">
+                          Rs {(recoverySummary?.totalOutstanding || 0).toLocaleString()}
+                        </div>
+                        <p className="text-xs text-slate-500">Pending payments</p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-600">Recovery Rate</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-blue-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {(recoverySummary?.recoveryRate || 0).toFixed(1)}%
-                    </div>
-                    <p className="text-xs text-slate-500">Collection efficiency</p>
-                  </CardContent>
-                </Card>
-              </div>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-slate-600">Recovery Rate</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-blue-600" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-slate-900">
+                          {(recoverySummary?.recoveryRate || 0).toFixed(1)}%
+                        </div>
+                        <p className="text-xs text-slate-500">Collection efficiency</p>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Package className="h-5 w-5 text-blue-600" />
-                      Ready Products Inventory
-                    </CardTitle>
-                    <CardDescription>Stock levels by product</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                      {finishedProducts.length === 0 ? (
-                        <p className="text-sm text-slate-500 text-center py-4">No ready products yet</p>
-                      ) : (
-                        finishedProducts.map((item, index) => {
-                          const totalInventory = finishedProducts.reduce((sum, p) => sum + p.quantity, 0)
-                          const percentage = totalInventory > 0 ? (item.quantity / totalInventory) * 100 : 0
-                          return (
-                            <div key={index} className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">{item.name}</span>
-                                <span className="text-sm text-slate-600">{item.quantity} units</span>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Package className="h-5 w-5 text-blue-600" />
+                          Ready Products Inventory
+                        </CardTitle>
+                        <CardDescription>Stock levels by product</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                          {finishedProducts.length === 0 ? (
+                            <p className="text-sm text-slate-500 text-center py-4">No ready products yet</p>
+                          ) : (
+                            finishedProducts.map((item, index) => {
+                              const totalInventory = finishedProducts.reduce((sum, p) => sum + p.quantity, 0)
+                              const percentage = totalInventory > 0 ? (item.quantity / totalInventory) * 100 : 0
+                              return (
+                                <div key={index} className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">{item.name}</span>
+                                    <span className="text-sm text-slate-600">{item.quantity} units</span>
+                                  </div>
+                                  <div className="w-full bg-slate-200 rounded-full h-2">
+                                    <div
+                                      className="bg-green-600 h-2 rounded-full transition-all"
+                                      style={{ width: `${percentage}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <TrendingUp className="h-5 w-5 text-green-600" />
+                          Monthly Performance
+                        </CardTitle>
+                        <CardDescription>Key metrics for this month</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Total Batches Produced</span>
+                            <span className="text-lg font-bold text-blue-600">{totalBatchesProduced}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Total Distributions</span>
+                            <span className="text-lg font-bold text-purple-600">{filteredDistributions.length}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Total Profit</span>
+                            <span className="text-lg font-bold text-green-600">
+                              Rs {monthlyDistributionProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Card className="h-fit">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <ShoppingCart className="h-5 w-5 text-green-600" />
+                          Finished Products
+                        </CardTitle>
+                        <CardDescription>Ready-to-sell products</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {finishedProducts.length === 0 ? (
+                          <p className="text-sm text-slate-500 text-center py-8">
+                            No finished products yet. Import from production batches to add products here.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {finishedProducts.map((item, index) => (
+                              <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                                <div>
+                                  <p className="font-medium text-sm">{item.name}</p>
+                                  <p className="text-xs text-slate-500">{item.barcode}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold text-green-600">{item.quantity} units</p>
+                                  <p className="text-xs text-slate-500">${item.selling_price?.toFixed(2) || "0.00"}/unit</p>
+                                </div>
                               </div>
-                              <div className="w-full bg-slate-200 rounded-full h-2">
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="h-fit">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Factory className="h-5 w-5 text-blue-600" />
+                          Production Batches
+                        </CardTitle>
+                        <CardDescription>Quality control and success metrics</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {filteredBatches.length === 0 ? (
+                          <p className="text-sm text-slate-500 text-center py-8">
+                            No production batches this month
+                          </p>
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                              <div className="p-3 bg-blue-50 rounded-lg">
+                                <p className="text-2xl font-bold text-blue-600">{totalBatchesProduced}</p>
+                                <p className="text-xs text-slate-600">Total Batches</p>
+                              </div>
+                              <div className="p-3 bg-green-50 rounded-lg">
+                                <p className="text-2xl font-bold text-green-600">{totalProduced - totalRejected}</p>
+                                <p className="text-xs text-slate-600">Accepted Units</p>
+                              </div>
+                              <div className="p-3 bg-amber-50 rounded-lg">
+                                <p className="text-2xl font-bold text-amber-600">{totalRejected}</p>
+                                <p className="text-xs text-slate-600">Rejected Units</p>
+                              </div>
+                            </div>
+                            <div className="p-4 bg-slate-50 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Success Rate</span>
+                                <span className="text-lg font-bold text-green-600">{successRate}%</span>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-3">
                                 <div
-                                  className="bg-green-600 h-2 rounded-full transition-all"
-                                  style={{ width: `${percentage}%` }}
+                                  className="bg-green-600 h-3 rounded-full transition-all"
+                                  style={{ width: `${successRate}%` }}
                                 ></div>
                               </div>
                             </div>
-                          )
-                        })
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-green-600" />
-                      Monthly Performance
-                    </CardTitle>
-                    <CardDescription>Key metrics for this month</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Total Batches Produced</span>
-                        <span className="text-lg font-bold text-blue-600">{totalBatchesProduced}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Total Distributions</span>
-                        <span className="text-lg font-bold text-purple-600">{filteredDistributions.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Total Profit</span>
-                        <span className="text-lg font-bold text-green-600">
-                          Rs {monthlyDistributionProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="h-fit">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingCart className="h-5 w-5 text-green-600" />
-                      Finished Products
-                    </CardTitle>
-                    <CardDescription>Ready-to-sell products</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {finishedProducts.length === 0 ? (
-                      <p className="text-sm text-slate-500 text-center py-8">
-                        No finished products yet. Import from production batches to add products here.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {finishedProducts.map((item, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                            <div>
-                              <p className="font-medium text-sm">{item.name}</p>
-                              <p className="text-xs text-slate-500">{item.barcode}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-bold text-green-600">{item.quantity} units</p>
-                              <p className="text-xs text-slate-500">${item.selling_price?.toFixed(2) || "0.00"}/unit</p>
+                            <div className="space-y-2">
+                              {filteredBatches.slice(0, 5).map((batch, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 border-l-4 border-blue-500 bg-slate-50 rounded">
+                                  <div>
+                                    <p className="text-sm font-medium">{(batch as any).productName || (batch as any).product_name}</p>
+                                    <p className="text-xs text-slate-500">{(batch as any).batchNumber || (batch as any).batch_number}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-bold">{(batch as any).quantityProduced || (batch as any).quantity_produced} units</p>
+                                    <p className="text-xs text-slate-500">
+                                      {new Date((batch as any).productionDate || (batch as any).production_date).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="h-fit">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Factory className="h-5 w-5 text-blue-600" />
-                      Production Batches
-                    </CardTitle>
-                    <CardDescription>Quality control and success metrics</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {filteredBatches.length === 0 ? (
-                      <p className="text-sm text-slate-500 text-center py-8">
-                        No production batches this month
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                          <div className="p-3 bg-blue-50 rounded-lg">
-                            <p className="text-2xl font-bold text-blue-600">{totalBatchesProduced}</p>
-                            <p className="text-xs text-slate-600">Total Batches</p>
-                          </div>
-                          <div className="p-3 bg-green-50 rounded-lg">
-                            <p className="text-2xl font-bold text-green-600">{totalProduced - totalRejected}</p>
-                            <p className="text-xs text-slate-600">Accepted Units</p>
-                          </div>
-                          <div className="p-3 bg-amber-50 rounded-lg">
-                            <p className="text-2xl font-bold text-amber-600">{totalRejected}</p>
-                            <p className="text-xs text-slate-600">Rejected Units</p>
-                          </div>
-                        </div>
-                        <div className="p-4 bg-slate-50 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium">Success Rate</span>
-                            <span className="text-lg font-bold text-green-600">{successRate}%</span>
-                          </div>
-                          <div className="w-full bg-slate-200 rounded-full h-3">
-                            <div
-                              className="bg-green-600 h-3 rounded-full transition-all"
-                              style={{ width: `${successRate}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          {filteredBatches.slice(0, 5).map((batch, index) => (
-                            <div key={index} className="flex items-center justify-between p-2 border-l-4 border-blue-500 bg-slate-50 rounded">
-                              <div>
-                                <p className="text-sm font-medium">{(batch as any).productName || (batch as any).product_name}</p>
-                                <p className="text-xs text-slate-500">{(batch as any).batchNumber || (batch as any).batch_number}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-sm font-bold">{(batch as any).quantityProduced || (batch as any).quantity_produced} units</p>
-                                <p className="text-xs text-slate-500">
-                                  {new Date((batch as any).productionDate || (batch as any).production_date).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               )}
 
@@ -1069,36 +1046,36 @@ export default function Dashboard() {
               )}
 
               {activeTab === "raw-materials" && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-900">Raw Materials Management</h2>
-                    <p className="text-slate-600">Manage raw materials and components for production</p>
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-slate-900">Raw Materials Management</h2>
+                      <p className="text-slate-600">Manage raw materials and components for production</p>
+                    </div>
+                    <Button onClick={() => setShowAddDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Raw Material
+                    </Button>
                   </div>
-                  <Button onClick={() => setShowAddDialog(true)} className="bg-blue-600 hover:bg-blue-700">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Raw Material
-                  </Button>
-                </div>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Factory className="h-5 w-5 text-blue-600" />
-                      Raw Materials Inventory
-                    </CardTitle>
-                    <CardDescription>Manufacturing components and supplies with pricing details</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <InventoryTable
-                      inventory={rawMaterials}
-                      setInventory={setInventory}
-                      showTypeFilter={false}
-                      inventoryType="raw"
-                    />
-                  </CardContent>
-                </Card>
-              </div>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Factory className="h-5 w-5 text-blue-600" />
+                        Raw Materials Inventory
+                      </CardTitle>
+                      <CardDescription>Manufacturing components and supplies with pricing details</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <InventoryTable
+                        inventory={rawMaterials}
+                        setInventory={setInventory}
+                        showTypeFilter={false}
+                        inventoryType="raw"
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
               )}
 
               {activeTab === "ready" && (
@@ -1135,26 +1112,26 @@ export default function Dashboard() {
               )}
 
               {activeTab === "distributions" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Distribution Management</CardTitle>
-                  <CardDescription>
-                    Track goods distributed to customers and partners for{" "}
-                    {new Date(selectedMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <DistributionTable
-                    distributions={filteredDistributions}
-                    setDistributions={setDistributions}
-                    inventory={inventory}
-                    selectedMonth={selectedMonth}
-                    productionBatches={productionBatches}
-                    onDistributionCreated={handleDistributionCreated}
-                    onShowLeaderboard={() => setShowLeaderboard(true)} // Pass leaderboard handler to distribution table
-                  />
-                </CardContent>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Distribution Management</CardTitle>
+                    <CardDescription>
+                      Track goods distributed to customers and partners for{" "}
+                      {new Date(selectedMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DistributionTable
+                      distributions={filteredDistributions}
+                      setDistributions={setDistributions}
+                      inventory={inventory}
+                      selectedMonth={selectedMonth}
+                      productionBatches={productionBatches}
+                      onDistributionCreated={handleDistributionCreated}
+                      onShowLeaderboard={() => setShowLeaderboard(true)} // Pass leaderboard handler to distribution table
+                    />
+                  </CardContent>
+                </Card>
               )}
 
               {activeTab === "production" && (

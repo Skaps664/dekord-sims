@@ -50,6 +50,7 @@ interface Distribution {
   notes?: string
   cost_price: number
   cost_of_goods_sold: number
+  distributor_cut: number
   gross_profit: number
   profit_margin_percent: number
 }
@@ -75,6 +76,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
     quantity: 0,
     distribution_date: formatDate(new Date()),
     unit_price: 0,
+    distributor_cut: 0,
     notes: "",
   })
 
@@ -94,19 +96,20 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
         // Map distributions and calculate profit metrics
         const mappedDistributions = distributionsResult.data.map((dist: any) => {
           // Find the product to get cost_price
-          const product = inventoryResult.success 
+          const product = inventoryResult.success
             ? inventoryResult.data.find((inv: any) => inv.id === dist.inventory_item_id)
             : null
-          
+
           const costPrice = product?.unit_cost || 0
           const unitPrice = dist.unit_price || 0
           const quantity = dist.quantity || 0
-          
+
           const costOfGoodsSold = costPrice * quantity
           const totalValue = unitPrice * quantity
+          const distributorCut = dist.distributor_cut || 0
           const grossProfit = totalValue - costOfGoodsSold
           const profitMarginPercent = totalValue > 0 ? (grossProfit / totalValue) * 100 : 0
-          
+
           return {
             id: dist.id,
             product_id: dist.inventory_item_id,
@@ -121,6 +124,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
             notes: dist.notes,
             cost_price: costPrice,
             cost_of_goods_sold: costOfGoodsSold,
+            distributor_cut: distributorCut,
             gross_profit: grossProfit,
             profit_margin_percent: profitMarginPercent
           }
@@ -130,7 +134,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
       if (inventoryResult.success) {
         // Filter only finished products with stock > 0 for distribution
         const availableProducts = inventoryResult.data
-          .filter((item: any) => 
+          .filter((item: any) =>
             item.item_type === 'finished_product' && item.quantity > 0
           )
           .map((item: any) => ({
@@ -213,6 +217,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
           quantity: newDistribution.quantity,
           distribution_date: newDistribution.distribution_date,
           unit_price: newDistribution.unit_price,
+          distributor_cut: newDistribution.distributor_cut * newDistribution.quantity,
           notes: newDistribution.notes || null,
         }),
       })
@@ -228,6 +233,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
           quantity: 0,
           distribution_date: formatDate(new Date()),
           unit_price: 0,
+          distributor_cut: 0,
           notes: "",
         })
         setSelectedProduct(null)
@@ -428,6 +434,20 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
                     </div>
 
                     <div className="space-y-2">
+                      <Label htmlFor="distributor_cut">Distributor Cut Per Unit ($)</Label>
+                      <Input
+                        id="distributor_cut"
+                        type="number"
+                        step="0.01"
+                        value={newDistribution.distributor_cut}
+                        onChange={(e) =>
+                          setNewDistribution({ ...newDistribution, distributor_cut: Number.parseFloat(e.target.value) || 0 })
+                        }
+                        placeholder="0.00"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
                       <Label htmlFor="distribution_date">Distribution Date</Label>
                       <Input
                         id="distribution_date"
@@ -465,6 +485,12 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
                         </p>
                       </div>
                       <div>
+                        <span className="text-slate-500 text-sm">Distributor Earnings:</span>
+                        <p className="text-xl font-bold text-orange-600">
+                          {formatCurrency(newDistribution.distributor_cut * newDistribution.quantity)}
+                        </p>
+                      </div>
+                      <div>
                         <span className="text-slate-500 text-sm">Total Cost:</span>
                         <p className="text-xl font-bold text-red-600">
                           {formatCurrency(newDistribution.quantity * selectedProduct.cost_price)}
@@ -474,17 +500,21 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
                         <span className="text-slate-500 text-sm">Gross Profit:</span>
                         <p className="text-xl font-bold text-blue-600">
                           {formatCurrency(
-                            newDistribution.quantity * (newDistribution.unit_price - selectedProduct.cost_price),
+                            (newDistribution.quantity * newDistribution.unit_price) -
+                            (newDistribution.quantity * selectedProduct.cost_price)
                           )}
                         </p>
                       </div>
                       <div>
                         <span className="text-slate-500 text-sm">Profit Margin:</span>
                         <p className="text-xl font-bold text-purple-600">
-                          {(
-                            ((newDistribution.unit_price - selectedProduct.cost_price) / newDistribution.unit_price) *
-                            100
-                          ).toFixed(1)}
+                          {newDistribution.quantity > 0 && newDistribution.unit_price > 0 ? (
+                            (
+                              (((newDistribution.quantity * newDistribution.unit_price) -
+                                (newDistribution.quantity * selectedProduct.cost_price)) / (newDistribution.quantity * newDistribution.unit_price)) *
+                              100
+                            ).toFixed(1)
+                          ) : "0.0"}
                           %
                         </p>
                       </div>
@@ -534,6 +564,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
               <TableHead>Unit Price</TableHead>
               <TableHead>Total Value</TableHead>
               <TableHead>Cost</TableHead>
+              <TableHead>Distributor Earnings</TableHead>
               <TableHead>Gross Profit</TableHead>
               <TableHead>Margin %</TableHead>
               <TableHead>Date</TableHead>
@@ -550,6 +581,7 @@ export function DistributionTable({ selectedMonth, onShowLeaderboard, onRefresh 
                 <TableCell>{formatCurrency(distribution.unit_price || 0)}</TableCell>
                 <TableCell className="font-semibold">{formatCurrency(distribution.total_value || 0)}</TableCell>
                 <TableCell className="text-red-600">{formatCurrency(distribution.cost_of_goods_sold || 0)}</TableCell>
+                <TableCell className="text-orange-600 font-semibold">{formatCurrency(distribution.distributor_cut || 0)}</TableCell>
                 <TableCell
                   className={`font-semibold ${(distribution.gross_profit || 0) >= 0 ? "text-green-600" : "text-red-600"}`}
                 >

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { type NextRequest, NextResponse } from "next/server"
 import DatabaseClient from "@/lib/database"
 import { createSuccessResponse, createErrorResponse, handleApiError, validateRequired } from "@/lib/api-helpers"
@@ -14,7 +16,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { inventory_item_id, recipient_name, recipient_contact, quantity, unit_price, notes } = body
+    const { inventory_item_id, recipient_name, recipient_contact, quantity, unit_price, distributor_cut, notes } = body
 
     // Validate required fields
     const errors = validateRequired({ inventory_item_id, recipient_name, quantity, unit_price })
@@ -30,6 +32,7 @@ export async function POST(request: NextRequest) {
       unit_price: Number.parseFloat(unit_price),
       distribution_date: new Date().toISOString(),
       total_amount: Number.parseFloat(quantity) * Number.parseFloat(unit_price),
+      distributor_cut: Number.parseFloat(distributor_cut) || 0,
       notes: notes || '',
     })
 
